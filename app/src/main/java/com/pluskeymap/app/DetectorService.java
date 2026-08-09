@@ -205,6 +205,7 @@ public class DetectorService extends Service {
                 logd("longPressRunnable fired → action_long");
                 handler.removeCallbacks(singleRunnable);
                 handler.removeCallbacks(resetRunnable);
+                handler.removeCallbacks(confirmSingleRunnable); // cancel any pending deferred single
                 singlePending   = false;
                 singleFired     = false;
                 // Keep longPressArmed = true — cleared by UP handler once key is released.
@@ -251,11 +252,13 @@ public class DetectorService extends Service {
 
             // confirmSingleRunnable: posted after UP arrives with singleFired=true but
             // heldMs < LONG_PRESS_MS.  After a short delay (≤ NOISE_UP_CONFIRM_MS) with
-            // no new DOWN, we conclude the user genuinely released before the long-press
-            // threshold and dispatch the single action.  If a new DOWN arrives first the
-            // DOWN handler cancels this runnable before starting the next cycle.
+            // no new DOWN and longPressRunnable not having fired, we conclude the user
+            // genuinely released before the long-press threshold and dispatch single.
+            // longPressRunnable cancels this if it fires first (user was still holding).
             confirmSingleRunnable = () -> {
-                logd("confirmSingleRunnable fired — dispatching single");
+                logd("confirmSingleRunnable fired — genuine release confirmed, dispatching single");
+                handler.removeCallbacks(longPressRunnable); // user released; long press will never fire
+                longPressArmed = false;
                 lastActionTime = System.currentTimeMillis();
                 dispatchAction(ActionExecutor.KEY_ACTION_SINGLE,
                         ActionExecutor.KEY_LAUNCH_PKG_SINGLE,
@@ -549,14 +552,21 @@ public class DetectorService extends Service {
                 // is less than the defer window (200ms) — longPressRunnable fires first,
                 // then confirmSingleRunnable fires, dispatching both actions.
                 if (heldMs < LONG_PRESS_MS) {
-                    handler.removeCallbacks(longPressRunnable);
-                    longPressArmed = false;
+                    // DO NOT cancel longPressRunnable — it is still the gatekeeper.
+                    // If the user is still physically holding, longPressRunnable will fire
+                    // at LONG_PRESS_MS and cancel confirmSingleRunnable before it dispatches.
+                    // If the user genuinely released, no new DOWN arrives and confirmSingleRunnable
+                    // fires, dispatching single.
+                    // DO NOT clear longPressArmed — longPressRunnable needs it to stay true
+                    // so the DOWN handler doesn't start a new cycle if a logcat repeat line
+                    // arrives while we are in this deferred window.
                     singleFired    = false;
-                    long confirmDelay = Math.min(NOISE_UP_CONFIRM_MS, LONG_PRESS_MS - heldMs);
+                    long confirmDelay = Math.min(NOISE_UP_CONFIRM_MS, LONG_PRESS_MS - heldMs - 1);
                     logd("UP after confirm (held " + heldMs + "ms < " + LONG_PRESS_MS + "ms)"
-                            + " — deferring single " + confirmDelay + "ms to rule out spurious watcher UP");
+                            + " — deferring single " + confirmDelay + "ms (longPressRunnable still armed)");
                     handler.removeCallbacks(confirmSingleRunnable);
                     handler.postDelayed(confirmSingleRunnable, confirmDelay);
+                    // longPressRunnable and longPressArmed intentionally left intact.
                     return;
                 }
                 // heldMs >= LONG_PRESS_MS: UP arrived after the long-press deadline.
