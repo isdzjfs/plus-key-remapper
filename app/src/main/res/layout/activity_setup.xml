@@ -19,14 +19,14 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="One-time Setup"
+            android:text="一次性设置"
             android:textAppearance="@style/TextAppearance.Material3.DisplaySmall"
             android:layout_marginBottom="6dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Grant READ_LOGS once via ADB and you\'re done forever."
+            android:text="只需通过 ADB 授予一次 READ_LOGS 权限，以后无需重复操作。"
             android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="28dp" />
@@ -71,7 +71,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Disable System Plus Key Action"
+                        android:text="停用系统的 Plus 键操作"
                         android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
                 </LinearLayout>
 
@@ -80,7 +80,7 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:text="Open your phone's Settings app → Gestures &amp; motions → Plus Key → set the action to &quot;No action&quot;. This prevents OxygenOS from consuming the key before this app can see it." />
+                    android:text="打开手机的“设置” → “手势与动作” → “Plus 键”，将操作设为“无操作”。这样可以防止 OxygenOS 在本应用检测到按键前将其拦截。" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -125,7 +125,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Enable Developer Options"
+                        android:text="启用开发者选项"
                         android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
                 </LinearLayout>
 
@@ -134,7 +134,7 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:text="Settings → About Device → Version → Version Number → tap it repeatedly until developer options are enabled."
+                    android:text="进入“设置” → “关于本机” → “版本信息” → “版本号”，连续点击，直到开发者选项已启用。"
                     android:layout_marginBottom="14dp" />
 
                 <com.google.android.material.button.MaterialButton
@@ -142,7 +142,7 @@
                     style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Open Developer Options" />
+                    android:text="打开开发者选项" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -187,7 +187,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Disable System Optimisation"
+                        android:text="停用系统优化"
                         android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
                 </LinearLayout>
 
@@ -196,7 +196,7 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:text="In Developer Options, scroll down and enable &quot;Disable system optimisation&quot;. This allows the ADB command to work." />
+                    android:text="在开发者选项中向下滚动并启用“停用系统优化”，以便 ADB 命令正常生效。" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -241,7 +241,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Run ADB Command on PC"
+                        android:text="在电脑上运行 ADB 命令"
                         android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
                 </LinearLayout>
 
@@ -250,7 +250,7 @@
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant"
-                    android:text="Connect your phone via USB. Run this once, you\'ll never need to again:"
+                    android:text="通过 USB 连接手机并运行一次以下命令，以后无需重复执行："
                     android:layout_marginBottom="12dp" />
 
                 <!-- Command box -->
@@ -277,7 +277,7 @@
                     android:id="@+id/btnCopyCommand"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Copy Command" />
+                    android:text="复制命令" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -301,7 +301,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Why is this needed?"
+                    android:text="为什么需要这些权限？"
                     android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
                     android:layout_marginBottom="6dp" />
 
@@ -311,7 +311,7 @@
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant"
                     android:lineSpacingMultiplier="1.4"
-                    android:text="READ_LOGS: OxygenOS intercepts the Plus Key before any app can see it. The only rootless way to detect it is by reading the system log, which requires this one-time permission grant.\n\nSYSTEM_ALERT_WINDOW: This lets the app keep working while you use other apps, so your Plus Key mappings work everywhere on your phone, not just on the home screen.\n\nBoth grants are safe and do not affect other apps." />
+                    android:text="READ_LOGS：OxygenOS 会在任何应用检测到 Plus 键前将其拦截。无需 Root 的唯一检测方式是读取系统日志，因此需要一次性授予此权限。\n\nSYSTEM_ALERT_WINDOW：让本应用在你使用其他应用时继续工作，使 Plus 键映射在整个手机上生效，而不仅限于主屏幕。\n\n这两项授权不会影响其他应用。" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -333,7 +333,7 @@
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Skip for now. I\'ll set it up later" />
+            android:text="暂时跳过，稍后再设置" />
 
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

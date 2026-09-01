@@ -109,18 +109,20 @@ public class MainActivity extends AppCompatActivity {
             if (!detectMode) return;
             if (code == LogcatWatcher.PLUS_KEY_CODE && "logcat".equals(source)) {
                 prefs.edit().putInt(ActionExecutor.KEY_DETECTED_KEYCODE, code).apply();
-                tvDetectedKeycode.setText("✓ Plus Key detected!");
-                tvDetectedAction.setText("Event: " + act + "  [via KEYLOG_OplusKeyEventUtil]");
+                tvDetectedKeycode.setText("✓ 已检测到 Plus 键！");
+                String actLabel = "down".equals(act) ? "按下"
+                        : ("up".equals(act) ? "释放" : String.valueOf(act));
+                tvDetectedAction.setText("事件：" + actLabel + "（来源：KEYLOG_OplusKeyEventUtil）");
                 detectMode = false;
                 DetectorService.setDetectMode(false);
-                btnDetect.setText("Start Detection");
+                btnDetect.setText("开始检测");
                 // Restore service to its pre-detect state
                 if (!serviceWasRunningBeforeDetect) {
                     stopDetectorService();
                 }
                 refreshServiceStatus(true);
                 Snackbar.make(findViewById(android.R.id.content),
-                        "Plus Key confirmed! Assign actions below.",
+                        "Plus 键已确认！请在下方分配操作。",
                         Snackbar.LENGTH_LONG).show();
             }
         }
@@ -133,6 +135,8 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         prefs = ActionExecutor.prefs(this);
+        // MainActivity can also be opened directly from service notifications.
+        RecentsVisibility.applySavedSetting(this);
 
         bindViews();
         applySkippedState(false);
@@ -284,7 +288,7 @@ public class MainActivity extends AppCompatActivity {
 
         btnClearKey.setOnClickListener(v -> {
             prefs.edit().remove(ActionExecutor.KEY_DETECTED_KEYCODE).apply();
-            tvDetectedKeycode.setText("Press your Plus Key…");
+            tvDetectedKeycode.setText("请按下 Plus 键…");
             tvDetectedAction.setText("");
             refreshServiceStatus(true);
         });
@@ -482,9 +486,9 @@ public class MainActivity extends AppCompatActivity {
 
         if (showBanner && tvBannerTitle != null && tvBannerBody != null) {
             MaterialButton btnReopen = findViewById(R.id.btnReopenSetup);
-            tvBannerTitle.setText("Setup not completed");
-            tvBannerBody.setText("ADB permission has not been granted. Key detection and action bindings are disabled. Complete setup to enable them.");
-            if (btnReopen != null) btnReopen.setText("Complete Setup");
+            tvBannerTitle.setText("尚未完成设置");
+            tvBannerBody.setText("尚未授予 ADB 权限，按键检测和操作绑定已停用。请完成设置以启用这些功能。");
+            if (btnReopen != null) btnReopen.setText("完成设置");
         }
 
         int[] grayIds = { R.id.cardDetector, R.id.cardBindings, R.id.cardCameraShutter };
@@ -566,31 +570,31 @@ public class MainActivity extends AppCompatActivity {
 
         if (!logPerm) {
             // No ADB permission - setup not done.
-            tvStatusTitle.setText("Setup required");
-            tvStatusSub.setText("Tap to open setup and grant the required permissions.");
+            tvStatusTitle.setText("需要完成设置");
+            tvStatusSub.setText("点击打开设置并授予所需权限。");
             ivStatusIcon.setImageResource(R.drawable.ic_status_warning);
             targetColor = resolveColor(com.google.android.material.R.attr.colorErrorContainer);
         } else if (DetectorService.isLogcatConfirmed()) {
             // Fully working.
-            tvStatusTitle.setText("Active. Listening for Plus Key.");
-            tvStatusSub.setText("Tap to pause.");
+            tvStatusTitle.setText("已启用，正在监听 Plus 键");
+            tvStatusSub.setText("点击暂停监听。");
             ivStatusIcon.setImageResource(R.drawable.ic_status_active);
             targetColor = resolveColor(com.google.android.material.R.attr.colorPrimaryContainer);
         } else if (serviceRunning) {
             // Service is up but hasn't seen an OEM key tag yet - could be starting,
             // waiting for the system dialog, or waiting for the user to press the key.
-            tvStatusTitle.setText("Press the Plus Key once");
-            tvStatusSub.setText("Press it once to finish setup.");
+            tvStatusTitle.setText("请按一次 Plus 键");
+            tvStatusSub.setText("按一次即可完成设置。");
             ivStatusIcon.setImageResource(R.drawable.ic_status_warning);
             targetColor = resolveColor(com.google.android.material.R.attr.colorSecondaryContainer);
         } else if (!keySet) {
-            tvStatusTitle.setText("Ready. Tap to start.");
-            tvStatusSub.setText("Detect your Plus Key first, then tap to activate.");
+            tvStatusTitle.setText("准备就绪，点击启动");
+            tvStatusSub.setText("请先检测 Plus 键，然后点击启用。");
             ivStatusIcon.setImageResource(R.drawable.ic_status_paused);
             targetColor = resolveColor(com.google.android.material.R.attr.colorSurfaceVariant);
         } else {
-            tvStatusTitle.setText("Paused");
-            tvStatusSub.setText("Tap to resume listening.");
+            tvStatusTitle.setText("已暂停");
+            tvStatusSub.setText("点击恢复监听。");
             ivStatusIcon.setImageResource(R.drawable.ic_status_paused);
             targetColor = resolveColor(com.google.android.material.R.attr.colorSurfaceVariant);
         }
@@ -638,13 +642,13 @@ public class MainActivity extends AppCompatActivity {
         detectMode = !detectMode;
         if (detectMode) {
             serviceWasRunningBeforeDetect = serviceRunning;
-            btnDetect.setText("Stop Detection");
-            tvDetectedKeycode.setText("Press your Plus Key now…");
-            tvDetectedAction.setText("Listening via logcat");
+            btnDetect.setText("停止检测");
+            tvDetectedKeycode.setText("现在请按下 Plus 键…");
+            tvDetectedAction.setText("正在通过系统日志监听");
             DetectorService.setDetectMode(true);
             launchDetectorService();
         } else {
-            btnDetect.setText("Start Detection");
+            btnDetect.setText("开始检测");
             DetectorService.setDetectMode(false);
             // If the service wasn't running before detect mode, stop it again
             if (!serviceWasRunningBeforeDetect) {
@@ -738,7 +742,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 if (!act.isEmpty()) return act;
             }
-            return "Custom Intent";
+            return "自定义 Intent";
         }
         if (action < 0 || action >= ActionConfig.ACTION_LABELS.length)
             return ActionConfig.ACTION_LABELS[0];
@@ -762,13 +766,13 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         // Add "Open App / Custom Intent…" as the last entry, opening the full picker
-        displayLabels.add("Open App / Custom Intent…");
+        displayLabels.add("打开应用/自定义 Intent…");
         actionIndices.add(ActionConfig.ACTION_CUSTOM_INTENT);
 
         String[] items = displayLabels.toArray(new String[0]);
 
         new MaterialAlertDialogBuilder(this)
-                .setTitle("Choose action")
+                .setTitle("选择操作")
                 .setItems(items, (dialog, which) -> {
                     int realAction = actionIndices.get(which);
                     if (realAction == ActionConfig.ACTION_CUSTOM_INTENT) {
@@ -777,6 +781,7 @@ public class MainActivity extends AppCompatActivity {
                         return;
                     }
                     prefs.edit().putInt(actionKey, realAction).apply();
+                    DetectorService.refreshGestureMode();
                     animateLabel(label, items[which]);
                     if (realAction == ActionConfig.ACTION_RINGER_TOGGLE) {
                         requestNotificationPolicyIfNeeded();
@@ -792,6 +797,7 @@ public class MainActivity extends AppCompatActivity {
                             .putInt(actionKey, ActionConfig.ACTION_CUSTOM_INTENT)
                             .putString(intentKey, stored)
                             .apply();
+                    DetectorService.refreshGestureMode();
                     animateLabel(label, displayLabel);
                 });
         // Pre-fill custom tab with whatever was saved
@@ -813,14 +819,14 @@ public class MainActivity extends AppCompatActivity {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null && !nm.isNotificationPolicyAccessGranted()) {
             new MaterialAlertDialogBuilder(this)
-                    .setTitle("Permission Required")
-                    .setMessage("Changing the ringer mode requires Do Not Disturb access. Tap OK to open settings and grant it.")
-                    .setPositiveButton("Open Settings", (d, w) -> {
+                    .setTitle("需要权限")
+                    .setMessage("更改响铃模式需要勿扰模式访问权限。点击“打开设置”并授予该权限。")
+                    .setPositiveButton("打开设置", (d, w) -> {
                         Intent intent = new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(intent);
                     })
-                    .setNegativeButton("Cancel", null)
+                    .setNegativeButton("取消", null)
                     .show();
         }
     }

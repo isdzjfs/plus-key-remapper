@@ -33,7 +33,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Plus Key Remapper"
+                    android:text="Plus 键重映射"
                     android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium" />
 
                 <ImageButton
@@ -43,7 +43,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@drawable/ic_settings"
                     android:tint="?attr/colorOnSurface"
-                    android:contentDescription="Settings" />
+                    android:contentDescription="设置" />
 
             </LinearLayout>
 
@@ -82,7 +82,7 @@
                             android:id="@+id/tvBannerTitle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Setup not completed"
+                            android:text="尚未完成设置"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                             android:textColor="?attr/colorOnErrorContainer" />
                     </LinearLayout>
@@ -91,7 +91,7 @@
                         android:id="@+id/tvBannerBody"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="ADB permission has not been granted. Key detection and action bindings are disabled. Complete setup to enable them."
+                        android:text="尚未授予 ADB 权限，按键检测和操作绑定已停用。请完成设置以启用这些功能。"
                         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                         android:textColor="?attr/colorOnErrorContainer"
                         android:alpha="0.85"
@@ -103,7 +103,7 @@
                         style="@style/Widget.Material3.Button.TonalButton"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Complete Setup" />
+                        android:text="完成设置" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
@@ -153,7 +153,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                            android:text="Checking…" />
+                            android:text="正在检查…" />
 
                         <TextView
                             android:id="@+id/tvStatusSub"
@@ -170,7 +170,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="10dp"
-                            android:text="Re-run Setup"
+                            android:text="重新设置"
                             android:visibility="gone" />
 
                     </LinearLayout>
@@ -221,7 +221,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                            android:text="Detect Your Plus Key" />
+                            android:text="检测 Plus 键" />
 
                     </LinearLayout>
 
@@ -231,7 +231,7 @@
                         android:layout_marginBottom="14dp"
                         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
                         android:textColor="?attr/colorOnSurfaceVariant"
-                        android:text="Tap Start Detection, then press your hardware Plus Key." />
+                        android:text="点击“开始检测”，然后按下手机上的 Plus 键。" />
 
                     <!-- Detection output box -->
                     <LinearLayout
@@ -248,7 +248,7 @@
                             android:layout_height="wrap_content"
                             android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
                             android:fontFamily="monospace"
-                            android:text="Press your Plus Key…" />
+                            android:text="请按下 Plus 键…" />
 
                         <TextView
                             android:id="@+id/tvDetectedAction"
@@ -274,14 +274,14 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:layout_marginEnd="8dp"
-                            android:text="Start Detection" />
+                            android:text="开始检测" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnClearKey"
                             style="@style/Widget.Material3.Button.OutlinedButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Clear" />
+                            android:text="清除" />
 
                     </LinearLayout>
 
@@ -332,7 +332,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                            android:text="Assign Actions" />
+                            android:text="分配操作" />
 
                     </LinearLayout>
 
@@ -377,7 +377,7 @@
                                     android:layout_height="wrap_content"
                                     android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                     android:textColor="?attr/colorOnSecondaryContainer"
-                                    android:text="Single Tap" />
+                                    android:text="单击" />
 
                                 <TextView
                                     android:id="@+id/tvSingleLabel"
@@ -386,7 +386,7 @@
                                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                     android:textColor="?attr/colorOnSecondaryContainer"
                                     android:alpha="0.72"
-                                    android:text="None" />
+                                    android:text="无" />
 
                             </LinearLayout>
 
@@ -441,7 +441,7 @@
                                     android:layout_height="wrap_content"
                                     android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                     android:textColor="?attr/colorOnSecondaryContainer"
-                                    android:text="Long Press" />
+                                    android:text="长按" />
 
                                 <TextView
                                     android:id="@+id/tvLongLabel"
@@ -450,7 +450,7 @@
                                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                     android:textColor="?attr/colorOnSecondaryContainer"
                                     android:alpha="0.72"
-                                    android:text="None" />
+                                    android:text="无" />
 
                             </LinearLayout>
 
@@ -506,7 +506,7 @@
                                 android:layout_gravity="center"
                                 android:src="@drawable/ic_camera_shutter"
                                 android:tint="?attr/colorOnPrimaryContainer"
-                                android:contentDescription="Camera shutter icon" />
+                                android:contentDescription="相机快门图标" />
                         </FrameLayout>
 
                         <LinearLayout
@@ -519,7 +519,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-                                android:text="Camera Shutter" />
+                                android:text="相机快门" />
 
                             <TextView
                                 android:layout_width="wrap_content"
@@ -527,7 +527,7 @@
                                 android:layout_marginTop="2dp"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSurfaceVariant"
-                                android:text="Single tap fires the shutter, only inside camera apps" />
+                                android:text="单击触发快门，仅在相机应用内生效" />
 
                         </LinearLayout>
 
@@ -555,7 +555,7 @@
                             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:lineSpacingMultiplier="1.3"
-                            android:text="When enabled, the Single Tap action is replaced by a shutter press whenever a camera app is in the foreground. In all other apps the normal Single Tap action still fires." />
+                            android:text="启用后，相机应用处于前台时，单击操作将替换为按下快门；在其他应用中仍会执行正常的单击操作。" />
 
                     </LinearLayout>
 
@@ -575,7 +575,7 @@
                             android:layout_weight="1"
                             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                             android:textColor="?attr/colorError"
-                            android:text="Accessibility access not granted - tap to enable" />
+                            android:text="尚未授予无障碍权限，点击启用" />
 
                     </LinearLayout>
 

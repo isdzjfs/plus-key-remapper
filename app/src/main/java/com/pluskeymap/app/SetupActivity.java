@@ -63,7 +63,7 @@ public class SetupActivity extends AppCompatActivity {
                 startActivity(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS));
             } catch (Exception e) {
                 Snackbar.make(findViewById(android.R.id.content),
-                        "Open Settings → About Phone → tap Build Number 7 times first.",
+                        "请先打开“设置” → “关于本机”，连续点击“版本号”7 次。",
                         Snackbar.LENGTH_LONG).show();
             }
         });
@@ -72,9 +72,9 @@ public class SetupActivity extends AppCompatActivity {
         MaterialButton btnCopy = findViewById(R.id.btnCopyCommand);
         btnCopy.setOnClickListener(v -> {
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(ClipData.newPlainText("adb command", ADB_COMMAND));
-            btnCopy.setText("Copied!");
-            btnCopy.postDelayed(() -> btnCopy.setText("Copy Command"), 2_000);
+            cm.setPrimaryClip(ClipData.newPlainText("ADB 命令", ADB_COMMAND));
+            btnCopy.setText("已复制！");
+            btnCopy.postDelayed(() -> btnCopy.setText("复制命令"), 2_000);
         });
 
         // Skip — go to MainActivity in degraded mode
@@ -111,7 +111,7 @@ public class SetupActivity extends AppCompatActivity {
         boolean allGranted     = logGranted && overlayGranted;
 
         if (allGranted) {
-            tvPermStatus.setText("✓ All permissions granted. Restarting…");
+            tvPermStatus.setText("✓ 已授予所有权限，正在重新启动…");
             tvPermStatus.setTextColor(getColor(android.R.color.holo_green_dark));
             tvPermStatus.setVisibility(View.VISIBLE);
 
@@ -123,8 +123,8 @@ public class SetupActivity extends AppCompatActivity {
             }
         } else {
             StringBuilder sb = new StringBuilder();
-            sb.append(logGranted     ? "✓ READ_LOGS granted\n" : "✗ READ_LOGS not granted\n");
-            sb.append(overlayGranted ? "✓ SYSTEM_ALERT_WINDOW granted" : "✗ SYSTEM_ALERT_WINDOW not granted");
+            sb.append(logGranted     ? "✓ 已授予 READ_LOGS\n" : "✗ 尚未授予 READ_LOGS\n");
+            sb.append(overlayGranted ? "✓ 已授予 SYSTEM_ALERT_WINDOW" : "✗ 尚未授予 SYSTEM_ALERT_WINDOW");
             tvPermStatus.setText(sb.toString().trim());
             tvPermStatus.setTextColor(getColor(android.R.color.holo_red_dark));
             tvPermStatus.setVisibility(View.VISIBLE);

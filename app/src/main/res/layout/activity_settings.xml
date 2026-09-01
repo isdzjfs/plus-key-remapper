@@ -20,7 +20,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Settings"
+            android:text="设置"
             android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium"
             android:layout_marginBottom="28dp" />
 
@@ -44,7 +44,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Theme"
+                    android:text="主题"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:layout_marginBottom="16dp" />
 
@@ -82,14 +82,14 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Follow System"
+                                android:text="跟随系统"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Matches your device theme"
+                                android:text="与设备主题保持一致"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />
@@ -133,14 +133,14 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Light"
+                                android:text="浅色"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Always light mode"
+                                android:text="始终使用浅色模式"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />
@@ -183,14 +183,14 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Dark"
+                                android:text="深色"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Always dark mode"
+                                android:text="始终使用深色模式"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />
@@ -223,7 +223,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Button behaviour"
+                    android:text="按键行为"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:layout_marginBottom="16dp" />
 
@@ -259,14 +259,14 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Single tap only"
+                                android:text="仅单击"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Disables long press. Single tap fires instantly"
+                                android:text="停用长按，单击后立即执行操作"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />
@@ -307,7 +307,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Background protection"
+                    android:text="后台保护"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:layout_marginBottom="16dp" />
 
@@ -343,14 +343,14 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Persistent notification"
+                                android:text="常驻通知"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Prevents system from killing the app"
+                                android:text="防止系统终止应用"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />
@@ -400,7 +400,7 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Open app settings &#8594; Battery usage"
+                                android:text="打开应用设置 &#8594; 电池用量"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
@@ -408,7 +408,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
-                                android:text="Set to &quot;Allow background activity&quot; to prevent OxygenOS from killing the service"
+                                android:text="设为“允许后台活动”，防止 OxygenOS 终止服务"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />
@@ -448,7 +448,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Pin app in Recents (OxygenOS)"
+                            android:text="在最近任务中锁定应用（OxygenOS）"
                             android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                             android:textColor="?attr/colorOnSecondaryContainer" />
 
@@ -456,7 +456,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
-                            android:text="If the app is still being killed: open Recents, tap the ⋮ menu on this app&#8217;s card, then tap \u201cLock\u201d. This prevents OxygenOS from clearing it automatically."
+                            android:text="如果应用仍被终止：打开最近任务，点击本应用卡片上的 ⋮ 菜单，再点击“锁定”。这样可以防止 OxygenOS 自动清除应用。"
                             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                             android:textColor="?attr/colorOnSecondaryContainer"
                             android:alpha="0.72" />
@@ -465,10 +465,67 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="8dp"
-                            android:text="&#9888;&#65039; Do NOT swipe the app away from Recents, even when locked, swiping will kill it."
+                            android:text="&#9888;&#65039; 即使已经锁定，也不要从最近任务中划掉本应用，否则应用仍会被终止。"
                             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                             android:textColor="?attr/colorOnSecondaryContainer"
                             android:alpha="0.9" />
+
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardHideFromRecents"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    app:cardCornerRadius="14dp"
+                    app:cardElevation="0dp"
+                    app:cardBackgroundColor="?attr/colorSecondaryContainer"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="?attr/colorOutlineVariant"
+                    app:rippleColor="?attr/colorOnSecondaryContainer">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="14dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="后台隐藏"
+                                android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
+                                android:textColor="?attr/colorOnSecondaryContainer" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="在“最近任务”中隐藏本应用卡片"
+                                android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                                android:textColor="?attr/colorOnSecondaryContainer"
+                                android:alpha="0.72" />
+
+                        </LinearLayout>
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchHideFromRecents"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:clickable="false"
+                            android:focusable="false" />
 
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
@@ -496,7 +553,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Haptic feedback"
+                    android:text="触觉反馈"
                     android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
                     android:layout_marginBottom="16dp" />
 
@@ -532,14 +589,14 @@
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Vibrate on toggle"
+                                android:text="操作时振动"
                                 android:textAppearance="@style/TextAppearance.Material3.LabelLarge"
                                 android:textColor="?attr/colorOnSecondaryContainer" />
 
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Vibrate on action"
+                                android:text="执行操作时振动"
                                 android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                                 android:textColor="?attr/colorOnSecondaryContainer"
                                 android:alpha="0.72" />

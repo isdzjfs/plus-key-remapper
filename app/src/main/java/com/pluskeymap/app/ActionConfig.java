@@ -16,18 +16,18 @@ public class ActionConfig {
     public static final int ACTION_CAMERA_SHUTTER = 12;
 
     public static final String[] ACTION_LABELS = {
-            "None",
-            "Toggle Flashlight",
+            "无",
+            "开关手电筒",
             null,           // slot 2 retired (was Screenshot) -- kept to avoid prefs remapping
             null,           // slot 3 retired (was Launch App) -- removed, background launch unreliable
-            "Volume Up",
-            "Volume Down",
-            "Play / Pause Media",
-            "Next Track",
-            "Previous Track",
+            "调高音量",
+            "调低音量",
+            "播放/暂停媒体",
+            "下一曲",
+            "上一曲",
             null,           // slot 9 retired (was Toggle Do Not Disturb)
-            "Toggle Ringer / Vibrate / DND",
-            "Custom Intent",
-            "Camera Shutter (in camera apps)"
+            "切换响铃/振动/勿扰模式",
+            "自定义 Intent",
+            "相机快门（仅相机应用）"
     };
 }

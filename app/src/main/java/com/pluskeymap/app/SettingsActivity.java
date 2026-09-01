@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.view.WindowCompat;
 import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 
 public class SettingsActivity extends AppCompatActivity {
@@ -22,6 +23,7 @@ public class SettingsActivity extends AppCompatActivity {
     static final String KEY_SINGLE_ONLY_MODE    = "single_only_mode";
     static final String KEY_PERSISTENT_NOTIF    = "persistent_notif";
     static final String KEY_HAPTIC_FEEDBACK     = "haptic_feedback";
+    static final String KEY_EXCLUDE_FROM_RECENTS = "exclude_from_recents";
 
     private MaterialCardView cardSystem, cardLight, cardDark;
     private MaterialCardView cardSingleOnlyMode;
@@ -30,6 +32,8 @@ public class SettingsActivity extends AppCompatActivity {
     private SwitchMaterial   switchPersistentNotif;
     private MaterialCardView cardHapticFeedback;
     private SwitchMaterial   switchHapticFeedback;
+    private MaterialCardView cardHideFromRecents;
+    private SwitchMaterial   switchHideFromRecents;
     private SharedPreferences prefs;
 
     @Override
@@ -52,6 +56,7 @@ public class SettingsActivity extends AppCompatActivity {
             boolean enabled = !switchSingleOnlyMode.isChecked();
             switchSingleOnlyMode.setChecked(enabled);
             prefs.edit().putBoolean(KEY_SINGLE_ONLY_MODE, enabled).apply();
+            DetectorService.refreshGestureMode();
         });
 
         cardPersistentNotif  = findViewById(R.id.cardPersistentNotif);
@@ -78,6 +83,25 @@ public class SettingsActivity extends AppCompatActivity {
             boolean enabled = !switchHapticFeedback.isChecked();
             switchHapticFeedback.setChecked(enabled);
             prefs.edit().putBoolean(KEY_HAPTIC_FEEDBACK, enabled).apply();
+        });
+
+        cardHideFromRecents  = findViewById(R.id.cardHideFromRecents);
+        switchHideFromRecents = findViewById(R.id.switchHideFromRecents);
+        switchHideFromRecents.setChecked(
+                prefs.getBoolean(KEY_EXCLUDE_FROM_RECENTS, false));
+        cardHideFromRecents.setOnClickListener(v -> {
+            boolean enabling = !switchHideFromRecents.isChecked();
+            if (enabling) {
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle("后台隐藏")
+                        .setMessage("隐藏后，本应用的卡片将从“最近任务”中消失。部分设备可能因此无法锁定后台任务，建议先在最近任务中锁定本应用，再继续。")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("继续", (dialog, which) ->
+                                applyHideFromRecentsSetting(true))
+                        .show();
+            } else {
+                applyHideFromRecentsSetting(false);
+            }
         });
 
         cardSystem.setOnClickListener(v -> applyTheme(0));
@@ -133,7 +157,7 @@ public class SettingsActivity extends AppCompatActivity {
                 switchPersistentNotif.setChecked(false);
                 com.google.android.material.snackbar.Snackbar.make(
                         findViewById(android.R.id.content),
-                        "Notification permission is required for this feature.",
+                        "此功能需要通知权限。",
                         com.google.android.material.snackbar.Snackbar.LENGTH_LONG).show();
             }
         }
@@ -152,6 +176,12 @@ public class SettingsActivity extends AppCompatActivity {
             // foreground state (e.g. after a touch that causes focus loss).
             ContextCompat.startForegroundService(this, i);
         }
+    }
+
+    private void applyHideFromRecentsSetting(boolean enabled) {
+        switchHideFromRecents.setChecked(enabled);
+        prefs.edit().putBoolean(KEY_EXCLUDE_FROM_RECENTS, enabled).apply();
+        RecentsVisibility.setExcluded(this, enabled);
     }
 
     static void applySavedTheme(android.content.Context ctx) {

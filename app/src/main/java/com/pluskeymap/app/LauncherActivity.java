@@ -16,6 +16,9 @@ public class LauncherActivity extends AppCompatActivity {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
+        // Restore the dynamic Recents flag whenever the launcher task is rebuilt.
+        RecentsVisibility.applySavedSetting(this);
+
         boolean setupDone = SetupActivity.isSetupDone(this);
         boolean skipped   = getSharedPreferences(SetupActivity.PREFS_SETUP, MODE_PRIVATE)
                 .getBoolean(SetupActivity.KEY_SKIPPED, false);

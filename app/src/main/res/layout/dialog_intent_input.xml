@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:text="Pick an app"
+        android:text="选择应用"
         app:icon="@drawable/ic_tap"
         style="@style/Widget.Material3.Button.OutlinedButton" />
 
@@ -35,7 +35,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Intent action">
+            android:hint="Intent 操作">
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/editIntentAction"
                 android:layout_width="match_parent"
@@ -49,7 +49,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:text="Presets"
+            android:text="预设"
             style="@style/Widget.Material3.Button.TonalButton"
             android:textSize="11sp" />
 
@@ -60,7 +60,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
-        android:hint="Package (e.g. com.spotify.music)">
+        android:hint="软件包（例如 com.spotify.music）">
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editIntentPackage"
             android:layout_width="match_parent"
@@ -74,7 +74,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="12dp"
-        android:hint="Component class (optional)">
+        android:hint="组件类（可选）">
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editIntentComponent"
             android:layout_width="match_parent"
@@ -87,7 +87,7 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Data URI (optional, e.g. tel:123456789)">
+        android:hint="数据 URI（可选，例如 tel:123456789）">
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/editIntentData"
             android:layout_width="match_parent"

@@ -1,7 +1,9 @@
 package com.pluskeymap.app;
 
 import android.app.ActivityManager;
+import android.app.ActivityOptions;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
 import android.content.Context;
@@ -11,12 +13,16 @@ import android.graphics.PixelFormat;
 import android.hardware.camera2.CameraManager;
 import android.media.AudioManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.view.KeyEvent;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.util.Log;
 
@@ -25,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ActionExecutor {
 
@@ -78,9 +85,17 @@ public class ActionExecutor {
     ));
 
     private final Context context;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private static boolean torchOn = false;
     private String torchCameraId = null;
     private final CameraManager cameraManager;
+
+    // The overlay exists only while an activity launch is in flight. Keeping it for
+    // a short grace period lets WindowManager finish registering the visible window
+    // before OxygenOS evaluates background-activity-launch eligibility.
+    private static final long LAUNCH_OVERLAY_HOLD_MS = 400L;
+    private static final long LAUNCH_AFTER_FRAME_COMMIT_MS = 96L;
+    private static final long LAUNCH_OVERLAY_FALLBACK_MS = 320L;
 
     public ActionExecutor(Context context) {
         this.context = context;
@@ -153,20 +168,29 @@ public class ActionExecutor {
     /**
      * Launches an activity from a background Foreground Service without BAL block.
      *
-     * Android blocks startActivity() from background processes (BAL). The fix:
-     * briefly add a 1×1px transparent TYPE_APPLICATION_OVERLAY window, which
-     * counts as a "visible window" and satisfies the BAL check. The dummy view
-     * is removed immediately after startActivity() returns.
+     * Android restricts activity starts from background processes (BAL). The fix:
+     * briefly add a 1×1px transparent TYPE_APPLICATION_OVERLAY window, wait until
+     * its first frame is committed, then use the Android 14+ PendingIntent opt-in.
+     * The overlay is removed shortly after the request.
      *
      * SYSTEM_ALERT_WINDOW is granted via ADB during setup:
      *   adb shell appops set com.pluskeymap.app SYSTEM_ALERT_WINDOW allow
      */
     private void startActivityFromBackground(Intent intent, String label) {
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent launchIntent = new Intent(intent)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Runnable launch = () -> startActivityWithTemporaryOverlay(launchIntent, label);
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            launch.run();
+        } else {
+            mainHandler.post(launch);
+        }
+    }
 
+    private void startActivityWithTemporaryOverlay(Intent intent, String label) {
         WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         if (wm == null) {
-            Log.w(TAG, "startActivityFromBackground: no WindowManager for '" + label + "'");
+            launchActivity(intent, label);
             return;
         }
 
@@ -177,16 +201,96 @@ public class ActionExecutor {
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.TOP | Gravity.START;
+        // WindowManager tracks the window Surface, not the pixels drawn into it, when
+        // deciding whether this UID has a visible non-app window. Keep the Surface at
+        // OxygenOS's maximum pass-through alpha so it is never classified as nearly
+        // transparent; the single pixel drawn below is itself only 1/255 opaque.
+        params.alpha = 0.8f;
 
-        View dummyView = new View(context);
+        View launchOverlay = new View(context);
+        launchOverlay.setBackgroundColor(0x01000000);
         try {
-            wm.addView(dummyView, params);
-            context.startActivity(intent);
-            Log.d(TAG, "startActivityFromBackground: success for '" + label + "'");
+            wm.addView(launchOverlay, params);
+        } catch (Exception e) {
+            Log.w(TAG, "startActivityFromBackground: overlay unavailable for '"
+                    + label + "', trying direct launch: " + e.getMessage());
+            launchActivity(intent, label);
+            return;
+        }
+
+        launchWhenOverlayIsVisible(wm, launchOverlay, intent, label);
+    }
+
+    private void launchWhenOverlayIsVisible(WindowManager wm, View launchOverlay,
+                                            Intent intent, String label) {
+        AtomicBoolean launchStarted = new AtomicBoolean(false);
+        Runnable launchOnce = () -> {
+            if (!launchStarted.compareAndSet(false, true)) return;
+            try {
+                launchActivity(intent, label);
+            } finally {
+                mainHandler.postDelayed(() -> {
+                    try { wm.removeView(launchOverlay); } catch (Exception ignored) {}
+                }, LAUNCH_OVERLAY_HOLD_MS);
+            }
+        };
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ViewTreeObserver observer = launchOverlay.getViewTreeObserver();
+            if (observer.isAlive()) {
+                // The previous implementation launched from View.post(), which raced
+                // WindowManager by ~1 ms on OxygenOS: BAL was evaluated immediately
+                // before the overlay changed to HAS_DRAWN. A frame-commit callback is
+                // the first reliable point at which the rendered frame was submitted.
+                observer.registerFrameCommitCallback(() ->
+                        mainHandler.postDelayed(launchOnce, LAUNCH_AFTER_FRAME_COMMIT_MS));
+            }
+        } else {
+            // API 26-28 has no frame-commit callback. This path is not used on the
+            // target OxygenOS 15 device, but retains a bounded compatibility fallback.
+            launchOverlay.postDelayed(launchOnce, 48L);
+        }
+
+        // Hardware rendering can be disabled by an OEM. Never leave the user action
+        // hanging in that case; this one-shot fallback adds no idle/background work.
+        mainHandler.postDelayed(() -> {
+            if (!launchStarted.get()) {
+                Log.w(TAG, "Overlay frame commit timed out for '" + label
+                        + "'; using bounded fallback");
+            }
+            launchOnce.run();
+        }, LAUNCH_OVERLAY_FALLBACK_MS);
+        launchOverlay.invalidate();
+    }
+
+    private void launchActivity(Intent intent, String label) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14+ requires an explicit opt-in when a PendingIntent is sent
+                // from the background. The PendingIntent is immutable and created/sent
+                // by this app for the user-requested hardware-key action only.
+                ActivityOptions creatorOptions = ActivityOptions.makeBasic();
+                creatorOptions.setPendingIntentCreatorBackgroundActivityStartMode(
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+                PendingIntent pendingIntent = PendingIntent.getActivity(
+                        context,
+                        label.hashCode(),
+                        intent,
+                        PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE,
+                        creatorOptions.toBundle());
+
+                ActivityOptions senderOptions = ActivityOptions.makeBasic();
+                senderOptions.setPendingIntentBackgroundActivityStartMode(
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+                pendingIntent.send(context, 0, null, null, null, null,
+                        senderOptions.toBundle());
+            } else {
+                context.startActivity(intent);
+            }
+            Log.d(TAG, "startActivityFromBackground: launch requested for '" + label + "'");
         } catch (Exception e) {
             Log.w(TAG, "startActivityFromBackground: failed for '" + label + "': " + e.getMessage());
-        } finally {
-            try { wm.removeView(dummyView); } catch (Exception ignored) {}
         }
     }
 
@@ -218,7 +322,7 @@ public class ActionExecutor {
         if (nm == null) return;
         if (!nm.isNotificationPolicyAccessGranted()) {
             android.widget.Toast.makeText(context,
-                    "Do Not Disturb requires notification policy access. Enable it in Settings.",
+                    "勿扰模式需要通知政策访问权限，请在系统设置中启用。",
                     android.widget.Toast.LENGTH_LONG).show();
             return;
         }
@@ -230,7 +334,7 @@ public class ActionExecutor {
             hapticToggle();
         } catch (SecurityException e) {
             android.widget.Toast.makeText(context,
-                    "Do Not Disturb requires notification policy access. Enable it in Settings.",
+                    "勿扰模式需要通知政策访问权限，请在系统设置中启用。",
                     android.widget.Toast.LENGTH_LONG).show();
         }
     }
@@ -248,18 +352,18 @@ public class ActionExecutor {
         String label; int nextState;
 
         switch (state) {
-            case 0: am.setRingerMode(AudioManager.RINGER_MODE_VIBRATE); label = "Vibrate"; nextState = 1; break;
+            case 0: am.setRingerMode(AudioManager.RINGER_MODE_VIBRATE); label = "振动"; nextState = 1; break;
             case 1:
                 if (nm.isNotificationPolicyAccessGranted())
                     nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
-                label = "DND"; nextState = 2; break;
+                label = "勿扰模式"; nextState = 2; break;
             default:
                 if (nm.isNotificationPolicyAccessGranted())
                     nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
                 am.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
                 new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
                         () -> am.setRingerMode(AudioManager.RINGER_MODE_NORMAL), 160);
-                label = "Ringer"; nextState = 0; break;
+                label = "响铃"; nextState = 0; break;
         }
         p.edit().putInt(KEY_RINGER_STATE, nextState).apply();
         android.widget.Toast.makeText(context, label, android.widget.Toast.LENGTH_SHORT).show();

@@ -174,8 +174,7 @@ public class DetectorService extends Service {
             // In dual mode → just mark that we have a confirmed press; the UP event
             // will decide whether it was a tap (short) or long press (long held).
             singleRunnable = () -> {
-                boolean singleOnly = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
-                        .getBoolean(SettingsActivity.KEY_SINGLE_ONLY_MODE, true);
+                boolean singleOnly = isEffectiveSingleOnlyMode();
                 if (singleOnly) {
                     logd("singleRunnable fired → single-only mode, instant commit");
                     singleFired    = true;
@@ -420,8 +419,7 @@ public class DetectorService extends Service {
 
             // Only start a new press cycle when no cycle is already in progress.
             if (!longPressArmed) {
-                boolean singleOnly = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
-                        .getBoolean(SettingsActivity.KEY_SINGLE_ONLY_MODE, true);
+                boolean singleOnly = isEffectiveSingleOnlyMode();
 
                 // Cancel any pending deferred single from a previous press cycle.
                 handler.removeCallbacks(confirmSingleRunnable);
@@ -465,8 +463,7 @@ public class DetectorService extends Service {
             logd("UP — heldMs=" + heldMs + " singleFired=" + singleFired
                     + " longPressFired=" + longPressFired);
 
-            boolean singleOnly = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
-                    .getBoolean(SettingsActivity.KEY_SINGLE_ONLY_MODE, true);
+            boolean singleOnly = isEffectiveSingleOnlyMode();
 
             if (singleOnly) {
                 // Single-only mode: singleRunnable already fired or will fire shortly.
@@ -661,8 +658,7 @@ public class DetectorService extends Service {
         logcatWatcher = new LogcatWatcher(this, broad);
         // Propagate the current button-behaviour mode so the watcher uses the
         // correct release-pause duration from the very first key event.
-        boolean dualMode = !getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
-                .getBoolean(SettingsActivity.KEY_SINGLE_ONLY_MODE, true);
+        boolean dualMode = !isEffectiveSingleOnlyMode();
         logcatWatcher.setDualMode(dualMode);
         logcatThread  = new Thread(logcatWatcher, "pkm-logcat");
         logcatThread.setDaemon(true);
@@ -784,8 +780,8 @@ public class DetectorService extends Service {
     private Notification buildMinimalNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
-                    CHANNEL_ID, "Plus Key Listener", NotificationManager.IMPORTANCE_MIN);
-            ch.setDescription("Required system notification. Can be hidden in notification settings.");
+                    CHANNEL_ID, "Plus 键监听", NotificationManager.IMPORTANCE_MIN);
+            ch.setDescription("必要的系统通知，可在通知设置中隐藏。");
             ch.setSound(null, null);
             ch.setShowBadge(false);
             getSystemService(NotificationManager.class).createNotificationChannel(ch);
@@ -793,8 +789,8 @@ public class DetectorService extends Service {
         Intent openApp = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Plus Key Remapper")
-                .setContentText("Running in background")
+                .setContentTitle("Plus 键重映射")
+                .setContentText("正在后台运行")
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setSilent(true)
@@ -811,8 +807,8 @@ public class DetectorService extends Service {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
-                    CHANNEL_ID, "Plus Key Listener", NotificationManager.IMPORTANCE_LOW);
-            ch.setDescription("Required system notification. Can be hidden in notification settings.");
+                    CHANNEL_ID, "Plus 键监听", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("必要的系统通知，可在通知设置中隐藏。");
             ch.setSound(null, null);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
@@ -829,12 +825,12 @@ public class DetectorService extends Service {
         PendingIntent openPi = PendingIntent.getActivity(this, 2, openIntent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        String actionLabel = running ? "Pause" : "Activate";
+        String actionLabel = running ? "暂停" : "启用";
         int    actionIcon  = running ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play;
 
         Notification notif = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Plus Key Remapper")
-                .setContentText(running ? "Active. Listening for Plus Key." : "Paused")
+                .setContentTitle("Plus 键重映射")
+                .setContentText(running ? "已启用，正在监听 Plus 键" : "已暂停")
                 .setSmallIcon(running ? android.R.drawable.ic_menu_compass : android.R.drawable.ic_media_pause)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setSilent(true)
@@ -862,6 +858,30 @@ public class DetectorService extends Service {
 
     static boolean isRunning() { return instance != null; }
     static boolean isLogcatConfirmed() { return logcatConfirmed; }
+
+    /**
+     * Treat an unassigned long-press action as single-only. There is no user-visible
+     * behavior to preserve in that case, so waiting ~850 ms only adds launch latency.
+     */
+    private boolean isEffectiveSingleOnlyMode() {
+        boolean singleOnly = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
+                .getBoolean(SettingsActivity.KEY_SINGLE_ONLY_MODE, true);
+        if (singleOnly) return true;
+        return ActionExecutor.prefs(this).getInt(
+                ActionExecutor.KEY_ACTION_LONG, ActionConfig.ACTION_NONE)
+                == ActionConfig.ACTION_NONE;
+    }
+
+    /** Applies a settings/action change to the already-running watcher. */
+    static void refreshGestureMode() {
+        DetectorService service = instance;
+        if (service == null || service.handler == null) return;
+        service.handler.post(() -> {
+            if (service.logcatWatcher != null) {
+                service.logcatWatcher.setDualMode(!service.isEffectiveSingleOnlyMode());
+            }
+        });
+    }
 
     /**
      * True if the OEM system dialog was accepted in any previous session.

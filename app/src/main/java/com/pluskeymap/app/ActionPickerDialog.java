@@ -219,7 +219,7 @@ public class ActionPickerDialog extends BottomSheetDialog {
             List<String> stored = new ArrayList<>();
 
             // Always first: launch main activity
-            labels.add("▶ Open " + app.label + " (main)");
+            labels.add("▶ 打开 " + app.label + "（主界面）");
             stored.add("|" + app.pkg + "|" + app.activity + "|");
 
             // Get all activities from the package
@@ -275,21 +275,21 @@ public class ActionPickerDialog extends BottomSheetDialog {
 
     private static final String[][] PRESETS = {
         // {label, stored_value}  stored = "action|pkg|component|data"
-        { "Open Dialer",             "android.intent.action.DIAL|||" },
-        { "Open Camera",             "android.media.action.IMAGE_CAPTURE|||" },
-        { "Open Settings",           "android.settings.SETTINGS|||" },
-        { "WiFi Settings",           "android.settings.WIFI_SETTINGS|||" },
-        { "Bluetooth Settings",      "android.settings.BLUETOOTH_SETTINGS|||" },
-        { "Battery Settings",        "android.settings.BATTERY_SAVER_SETTINGS|||" },
-        { "Sound Settings",          "android.settings.SOUND_SETTINGS|||" },
-        { "Airplane Mode Settings",  "android.settings.AIRPLANE_MODE_SETTINGS|||" },
-        { "Accessibility Settings",  "android.settings.ACCESSIBILITY_SETTINGS|||" },
-        { "Take Screenshot",         "android.intent.action.SCREENSHOT|||" },
-        { "Play / Pause Media",      "android.intent.action.MEDIA_BUTTON|||" },
-        { "Next Track",              "android.intent.action.MEDIA_NEXT|||" },
-        { "Previous Track",          "android.intent.action.MEDIA_PREVIOUS|||" },
-        { "Expand Notification Panel", "com.android.systemui.statusbar.EXPAND_NOTIFICATIONS|com.android.systemui||" },
-        { "Open Browser",            "android.intent.action.VIEW|||https://google.com" },
+        { "打开拨号界面",             "android.intent.action.DIAL|||" },
+        { "打开相机",                 "android.media.action.IMAGE_CAPTURE|||" },
+        { "打开系统设置",             "android.settings.SETTINGS|||" },
+        { "打开 Wi-Fi 设置",          "android.settings.WIFI_SETTINGS|||" },
+        { "打开蓝牙设置",             "android.settings.BLUETOOTH_SETTINGS|||" },
+        { "打开电池设置",             "android.settings.BATTERY_SAVER_SETTINGS|||" },
+        { "打开声音设置",             "android.settings.SOUND_SETTINGS|||" },
+        { "打开飞行模式设置",         "android.settings.AIRPLANE_MODE_SETTINGS|||" },
+        { "打开无障碍设置",           "android.settings.ACCESSIBILITY_SETTINGS|||" },
+        { "截取屏幕截图",             "android.intent.action.SCREENSHOT|||" },
+        { "播放/暂停媒体",            "android.intent.action.MEDIA_BUTTON|||" },
+        { "下一曲",                   "android.intent.action.MEDIA_NEXT|||" },
+        { "上一曲",                   "android.intent.action.MEDIA_PREVIOUS|||" },
+        { "展开通知面板",             "com.android.systemui.statusbar.EXPAND_NOTIFICATIONS|com.android.systemui||" },
+        { "打开浏览器",               "android.intent.action.VIEW|||https://google.com" },
     };
 
     private void setupPresetsTab(View root) {
@@ -327,13 +327,13 @@ public class ActionPickerDialog extends BottomSheetDialog {
         String data      = text(etData);
 
         if (action.isEmpty() && pkg.isEmpty()) {
-            etAction.setError("Enter an action or package");
+            etAction.setError("请输入操作或软件包名称");
             return;
         }
 
         String stored = action + "|" + pkg + "|" + component + "|" + data;
         String label  = !pkg.isEmpty() ? pkg : action;
-        listener.onActionSelected(ActionConfig.ACTION_CUSTOM_INTENT, stored, "Custom: " + label);
+        listener.onActionSelected(ActionConfig.ACTION_CUSTOM_INTENT, stored, "自定义：" + label);
         dismiss();
     }
 

@@ -87,9 +87,9 @@ public class KeepaliveJobService extends JobService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
                     CHANNEL_ALERT,
-                    "Plus Key Permission Alert",
+                    "Plus 键权限提醒",
                     NotificationManager.IMPORTANCE_HIGH);
-            ch.setDescription("Alerts when system log permission needs re-granting");
+            ch.setDescription("需要重新授予系统日志权限时发出提醒");
             ch.setSound(null, null);
             nm.createNotificationChannel(ch);
         }
@@ -102,11 +102,11 @@ public class KeepaliveJobService extends JobService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notif = new NotificationCompat.Builder(ctx, CHANNEL_ALERT)
-                .setContentTitle("Plus Key stopped — tap to re-enable")
-                .setContentText("System log permission was revoked. Tap to re-accept the system dialog.")
+                .setContentTitle("Plus 键监听已停止，点击重新启用")
+                .setContentText("系统日志权限已被撤销，点击后重新接受系统对话框。")
                 .setStyle(new NotificationCompat.BigTextStyle()
-                        .bigText("OxygenOS revoked the system log permission when the app was restarted. "
-                                + "Tap to open the app and accept the system dialog to re-enable Plus Key detection."))
+                        .bigText("应用重新启动时，OxygenOS 撤销了系统日志权限。"
+                                + "点击打开应用并接受系统对话框，即可重新启用 Plus 键检测。"))
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
