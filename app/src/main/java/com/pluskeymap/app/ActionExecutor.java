@@ -2,6 +2,7 @@ package com.pluskeymap.app;
 
 import android.app.ActivityManager;
 import android.app.ActivityOptions;
+import android.app.KeyguardManager;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.usage.UsageStats;
@@ -15,6 +16,7 @@ import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
@@ -96,6 +98,22 @@ public class ActionExecutor {
     private static final long LAUNCH_OVERLAY_HOLD_MS = 400L;
     private static final long LAUNCH_AFTER_FRAME_COMMIT_MS = 96L;
     private static final long LAUNCH_OVERLAY_FALLBACK_MS = 320L;
+    // A screen-off overlay cannot commit a frame, so OxygenOS rejects the activity
+    // start before the target's turnScreenOn attribute can run. Wake only for the
+    // user-triggered launch, then let the target activity manage the screen.
+    private static final long SCREEN_WAKE_LOCK_TIMEOUT_MS = 3_000L;
+    private static final long SCREEN_WAKE_LOCK_RELEASE_MS = 1_500L;
+    private static final long SCREEN_WAKE_POLL_MS = 50L;
+    private static final int SCREEN_WAKE_MAX_POLLS = 12;
+    private static final long SCREEN_WAKE_SETTLE_MS = 120L;
+    private static final long UNLOCK_REPLAY_TIMEOUT_MS = 2 * 60_000L;
+    private static final long UNLOCK_STATE_POLL_INTERVAL_MS = 40L;
+    private static final long UNLOCK_STATE_POLL_WINDOW_MS = 8_000L;
+
+    private Intent pendingUnlockIntent;
+    private String pendingUnlockLabel;
+    private long pendingUnlockExpiryElapsedMs;
+    private Runnable unlockStatePollRunnable;
 
     public ActionExecutor(Context context) {
         this.context = context;
@@ -177,14 +195,170 @@ public class ActionExecutor {
      *   adb shell appops set com.pluskeymap.app SYSTEM_ALERT_WINDOW allow
      */
     private void startActivityFromBackground(Intent intent, String label) {
+        startActivityFromBackground(intent, label, true);
+    }
+
+    private void startActivityFromBackground(Intent intent, String label,
+                                             boolean rememberForUnlock) {
         Intent launchIntent = new Intent(intent)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        Runnable launch = () -> startActivityWithTemporaryOverlay(launchIntent, label);
+        Runnable launch = () -> {
+            if (rememberForUnlock
+                    && rememberLaunchForUnlockIfNeeded(launchIntent, label)) {
+                wakeScreenForPendingUnlock(label);
+                return;
+            }
+            startActivityAfterEnsuringInteractive(launchIntent, label);
+        };
         if (Looper.myLooper() == Looper.getMainLooper()) {
             launch.run();
         } else {
             mainHandler.post(launch);
         }
+    }
+
+    private boolean rememberLaunchForUnlockIfNeeded(Intent intent, String label) {
+        KeyguardManager keyguardManager = context.getSystemService(KeyguardManager.class);
+        if (keyguardManager == null || !keyguardManager.isKeyguardLocked()) return false;
+
+        pendingUnlockIntent = new Intent(intent);
+        pendingUnlockLabel = label;
+        pendingUnlockExpiryElapsedMs = SystemClock.elapsedRealtime() + UNLOCK_REPLAY_TIMEOUT_MS;
+        Log.d(TAG, "Queued locked-screen launch replay for '" + label + "'");
+        return true;
+    }
+
+    /** Replays the most recent locked-screen launch as soon as the user unlocks. */
+    void onUserPresent() {
+        replayPendingUnlock("USER_PRESENT broadcast");
+    }
+
+    private void replayPendingUnlock(String trigger) {
+        Runnable replay = () -> {
+            Intent intent = pendingUnlockIntent;
+            String label = pendingUnlockLabel;
+            long expiry = pendingUnlockExpiryElapsedMs;
+            if (unlockStatePollRunnable != null) {
+                mainHandler.removeCallbacks(unlockStatePollRunnable);
+                unlockStatePollRunnable = null;
+            }
+            pendingUnlockIntent = null;
+            pendingUnlockLabel = null;
+            pendingUnlockExpiryElapsedMs = 0L;
+
+            if (intent == null || SystemClock.elapsedRealtime() > expiry) {
+                if (intent != null) {
+                    Log.d(TAG, "Discarded expired unlock launch replay for '" + label + "'");
+                }
+                return;
+            }
+
+            Log.d(TAG, "Replaying locked-screen launch via " + trigger
+                    + " for '" + label + "'");
+            startActivityFromBackground(intent, label, false);
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            replay.run();
+        } else {
+            mainHandler.post(replay);
+        }
+    }
+
+    private void startActivityAfterEnsuringInteractive(Intent intent, String label) {
+        PowerManager powerManager = context.getSystemService(PowerManager.class);
+        if (powerManager == null || powerManager.isInteractive()) {
+            startActivityWithTemporaryOverlay(intent, label);
+            return;
+        }
+
+        acquireEventWakeLock(powerManager, label);
+        waitForInteractiveThenLaunch(powerManager, intent, label, 0);
+    }
+
+    private void wakeScreenForPendingUnlock(String label) {
+        PowerManager powerManager = context.getSystemService(PowerManager.class);
+        if (powerManager != null && !powerManager.isInteractive()) {
+            acquireEventWakeLock(powerManager, label);
+        }
+        startUnlockStatePolling();
+    }
+
+    private void startUnlockStatePolling() {
+        if (unlockStatePollRunnable != null) {
+            mainHandler.removeCallbacks(unlockStatePollRunnable);
+        }
+        long deadline = SystemClock.elapsedRealtime() + UNLOCK_STATE_POLL_WINDOW_MS;
+        unlockStatePollRunnable = new Runnable() {
+            @Override public void run() {
+                if (this != unlockStatePollRunnable || pendingUnlockIntent == null) return;
+
+                if (SystemClock.elapsedRealtime() >= deadline) {
+                    unlockStatePollRunnable = null;
+                    Log.d(TAG, "Short unlock-state polling ended; USER_PRESENT remains armed");
+                    return;
+                }
+
+                KeyguardManager keyguardManager =
+                        context.getSystemService(KeyguardManager.class);
+                if (keyguardManager != null && !keyguardManager.isKeyguardLocked()) {
+                    Log.d(TAG, "Keyguard cleared during short event polling");
+                    replayPendingUnlock("keyguard-state poll");
+                    return;
+                }
+
+                mainHandler.postDelayed(this, UNLOCK_STATE_POLL_INTERVAL_MS);
+            }
+        };
+        // Let the display wake transition begin before the first binder query.
+        mainHandler.postDelayed(unlockStatePollRunnable, UNLOCK_STATE_POLL_INTERVAL_MS);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void acquireEventWakeLock(PowerManager powerManager, String label) {
+        try {
+            PowerManager.WakeLock wakeLock = powerManager.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                            | PowerManager.ACQUIRE_CAUSES_WAKEUP
+                            | PowerManager.ON_AFTER_RELEASE,
+                    "PlusKeyMapper::ActionScreenWake");
+            wakeLock.setReferenceCounted(false);
+            wakeLock.acquire(SCREEN_WAKE_LOCK_TIMEOUT_MS);
+            // Release promptly after the display transition. The acquire timeout is
+            // only a hard safety net in case this callback cannot run.
+            mainHandler.postDelayed(() -> {
+                try {
+                    if (wakeLock.isHeld()) wakeLock.release();
+                } catch (RuntimeException e) {
+                    Log.w(TAG, "Action screen wake release failed: " + e.getMessage());
+                }
+            }, SCREEN_WAKE_LOCK_RELEASE_MS);
+            Log.d(TAG, "Waking screen for hardware-key launch '" + label + "'");
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Unable to wake screen for '" + label + "': " + e.getMessage());
+        }
+    }
+
+    private void waitForInteractiveThenLaunch(PowerManager powerManager, Intent intent,
+                                              String label, int pollCount) {
+        if (powerManager.isInteractive()) {
+            // Give WindowManager a short, bounded interval to leave the dozing state;
+            // otherwise the overlay can still remain READY_TO_SHOW without drawing.
+            mainHandler.postDelayed(
+                    () -> startActivityWithTemporaryOverlay(intent, label),
+                    SCREEN_WAKE_SETTLE_MS);
+            return;
+        }
+
+        if (pollCount >= SCREEN_WAKE_MAX_POLLS) {
+            Log.w(TAG, "Screen wake timed out for '" + label + "'; trying launch anyway");
+            startActivityWithTemporaryOverlay(intent, label);
+            return;
+        }
+
+        mainHandler.postDelayed(
+                () -> waitForInteractiveThenLaunch(
+                        powerManager, intent, label, pollCount + 1),
+                SCREEN_WAKE_POLL_MS);
     }
 
     private void startActivityWithTemporaryOverlay(Intent intent, String label) {

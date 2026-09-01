@@ -702,6 +702,9 @@ public class DetectorService extends Service {
                         startLogcat();
                     }
                 } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                    // If a hardware-key launch was queued while keyguard was showing,
+                    // bring the requested app forward immediately after user unlock.
+                    if (executor != null) executor.onUserPresent();
                     // Screen just unlocked — immediately check if READ_LOGS was revoked
                     // while screen was off. This surfaces the re-auth notification the
                     // moment the user can act on it rather than waiting for the next
