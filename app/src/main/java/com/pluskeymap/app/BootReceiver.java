@@ -22,6 +22,11 @@ public class BootReceiver extends BroadcastReceiver {
             return;
         }
 
+        if (DetectionBackend.usesShizuku(context)) {
+            DetectionBackend.recover(context);
+            return;
+        }
+
         // Full-device log access is session-scoped and Android rejects new
         // requests from a background boot receiver. Ask the user to reopen the
         // app instead of starting a detector that cannot receive Plus-key logs.

@@ -45,6 +45,11 @@ public class KeepaliveJobService extends JobService {
             return false;
         }
 
+        if (DetectionBackend.usesShizuku(ctx)) {
+            DetectionBackend.recover(ctx);
+            return false;
+        }
+
         boolean hasLogPerm = ctx.checkSelfPermission("android.permission.READ_LOGS")
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
 
@@ -80,9 +85,9 @@ public class KeepaliveJobService extends JobService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
                     CHANNEL_ALERT,
-                    "Plus 键日志访问提醒",
+                    "Plus 键监听提醒",
                     NotificationManager.IMPORTANCE_HIGH);
-            ch.setDescription("系统日志读取会话结束、需要前台重新确认时发出提醒");
+            ch.setDescription("按键监听需要恢复时发出提醒");
             ch.setSound(null, null);
             nm.createNotificationChannel(ch);
         }
@@ -94,14 +99,16 @@ public class KeepaliveJobService extends JobService {
         PendingIntent pi = PendingIntent.getActivity(ctx, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
+        boolean shizuku = DetectionBackend.usesShizuku(ctx);
         Notification notif = new NotificationCompat.Builder(ctx, CHANNEL_ALERT)
                 .setContentTitle("Plus 键监听已停止，点击重新启用")
-                .setContentText("系统日志读取会话已结束，点击后在前台重新确认。")
+                .setContentText(shizuku ? "请检查 Shizuku 是否运行并已授权，点击恢复监听。" : "系统日志读取会话已结束，点击后在前台重新确认。")
                 .setStyle(new NotificationCompat.BigTextStyle()
-                        .bigText("Android 只允许前台应用确认完整设备日志访问。"
+                        .bigText(shizuku ? "此模式无需系统日志权限。请启动 Shizuku 并授权本应用；若系统限制后台启动，请点击此通知恢复。" : "Android 只允许前台应用确认完整设备日志访问。"
                                 + "点击打开应用并接受系统对话框，即可重新启用 Plus 键检测。"))
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setOnlyAlertOnce(true)
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .build();

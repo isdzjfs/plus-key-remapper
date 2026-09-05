@@ -22,6 +22,9 @@ public class PlusKeyApp extends Application {
         super.onCreate();
         DynamicColors.applyToActivitiesIfAvailable(this);
         SettingsActivity.applySavedTheme(this);
+        rikka.shizuku.Shizuku.addBinderReceivedListenerSticky(() ->
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                        DetectionBackend.recover(this)));
 
         // Periodic health checks notify when the session is lost. They must not
         // recreate logcat from the background because Android denies that request.

@@ -47,6 +47,14 @@
 
             </LinearLayout>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDetectionBackend"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="检测方式：系统日志（点击切换）" />
+
             <!-- ══ SKIPPED-SETUP BANNER (shown only when user skipped setup) ══ -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardSetupBanner"

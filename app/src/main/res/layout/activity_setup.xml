@@ -16,6 +16,13 @@
         android:paddingEnd="20dp">
 
         <!-- Header -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSetupShizuku"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="改用 Shizuku 底层按键（无需日志权限）" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -311,7 +318,7 @@
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant"
                     android:lineSpacingMultiplier="1.4"
-                    android:text="READ_LOGS：OxygenOS 会在任何应用检测到 Plus 键前将其拦截。无需 Root 的检测方式需要读取系统日志。ADB 静态授权通常只需一次；Android 结束日志会话后，可能再次要求你打开 APP 并确认“允许访问所有设备日志”。\n\nSYSTEM_ALERT_WINDOW：让本应用在你使用其他应用时继续工作，使 Plus 键映射在整个手机上生效，而不仅限于主屏幕。\n\n这两项授权不会影响其他应用。" />
+                    android:text="READ_LOGS：OxygenOS 会在任何应用检测到 Plus 键前将其拦截。本兼容模式通过读取系统日志检测按键，也可改用 Shizuku 底层按键模式。ADB 静态授权通常只需一次；Android 结束日志会话后，可能再次要求你打开 APP 并确认“允许访问所有设备日志”。\n\nSYSTEM_ALERT_WINDOW：让本应用在你使用其他应用时继续工作，使 Plus 键映射在整个手机上生效，而不仅限于主屏幕。\n\n这两项授权不会影响其他应用。" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

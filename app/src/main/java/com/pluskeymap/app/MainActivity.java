@@ -31,6 +31,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+    private static final int SHIZUKU_PERMISSION_REQUEST = 410;
+    private final rikka.shizuku.Shizuku.OnRequestPermissionResultListener shizukuPermission =
+            (requestCode, result) -> runOnUiThread(() -> {
+                if (requestCode != SHIZUKU_PERMISSION_REQUEST || isFinishing()
+                        || !DetectionBackend.usesShizuku(this)) return;
+                applySkippedState(false);
+                if (result == PackageManager.PERMISSION_GRANTED) startDetectorService();
+                else Snackbar.make(findViewById(android.R.id.content),
+                        "未获得 Shizuku 授权，可在 Shizuku 的已授权应用中重新允许。", Snackbar.LENGTH_LONG).show();
+                refreshServiceStatus(true);
+            });
 
     private SharedPreferences prefs;
 
@@ -57,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
             new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable permCheckRunnable = new Runnable() {
         @Override public void run() {
-            if (serviceRunning && (!isPermissionGranted() || DetectorService.isLogcatDenied(MainActivity.this))) {
+            if (!DetectionBackend.usesShizuku(MainActivity.this) && serviceRunning && (!isPermissionGranted() || DetectorService.isLogcatDenied(MainActivity.this))) {
                 stopDetectorService();
                 applySkippedState(false);
             }
@@ -99,7 +110,8 @@ public class MainActivity extends AppCompatActivity {
                 refreshServiceStatus(true);
                 return;
             }
-            if (DetectorService.ACTION_LOGCAT_CONFIRMED.equals(intent.getAction())) {
+            if (DetectorService.ACTION_LOGCAT_CONFIRMED.equals(intent.getAction())
+                    || DetectorService.ACTION_INPUT_STATE_CHANGED.equals(intent.getAction())) {
                 refreshServiceStatus(true);
                 return;
             }
@@ -111,12 +123,12 @@ public class MainActivity extends AppCompatActivity {
             String act    = intent.getStringExtra(DetectorService.EXTRA_ACTION);
             String source = intent.getStringExtra("source");
             if (!detectMode) return;
-            if (code == LogcatWatcher.PLUS_KEY_CODE && "logcat".equals(source)) {
+            if (code == LogcatWatcher.PLUS_KEY_CODE && ("logcat".equals(source) || "shizuku".equals(source))) {
                 prefs.edit().putInt(ActionExecutor.KEY_DETECTED_KEYCODE, code).apply();
                 tvDetectedKeycode.setText("✓ 已检测到 Plus 键！");
                 String actLabel = "down".equals(act) ? "按下"
                         : ("up".equals(act) ? "释放" : String.valueOf(act));
-                tvDetectedAction.setText("事件：" + actLabel + "（来源：KEYLOG_OplusKeyEventUtil）");
+                tvDetectedAction.setText("事件：" + actLabel + ("shizuku".equals(source) ? "（来源：Shizuku 底层按键）" : "（来源：KEYLOG_OplusKeyEventUtil）"));
                 detectMode = false;
                 DetectorService.setDetectMode(false);
                 btnDetect.setText("开始检测");
@@ -143,6 +155,7 @@ public class MainActivity extends AppCompatActivity {
         RecentsVisibility.applySavedSetting(this);
 
         bindViews();
+        rikka.shizuku.Shizuku.addRequestPermissionResultListener(shizukuPermission);
         applySkippedState(false);
         applySingleOnlyMode();
         refreshServiceStatus(false);
@@ -182,6 +195,7 @@ public class MainActivity extends AppCompatActivity {
                 .getBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false);
         pendingForegroundReauth = false;
         if (!wasRunning) return; // user had stopped it - don't auto-restart
+        if (DetectionBackend.usesShizuku(this)) { authorizeShizuku(); return; }
         if (!isPermissionGranted()) {
             startActivity(new Intent(this, SetupActivity.class));
             return;
@@ -208,7 +222,7 @@ public class MainActivity extends AppCompatActivity {
         // If the service is running but permission was revoked/denied while we
         // were in the background (e.g. user dismissed the overlay dialog), stop
         // the service immediately so the UI never shows "Active" without perms.
-        if (serviceRunning && (!isPermissionGranted() || DetectorService.isLogcatDenied(this))) {
+        if (!DetectionBackend.usesShizuku(this) && serviceRunning && (!isPermissionGranted() || DetectorService.isLogcatDenied(this))) {
             stopDetectorService();
         }
         applySkippedState(oemLogcatDenied);
@@ -223,6 +237,7 @@ public class MainActivity extends AppCompatActivity {
         filter.addAction(DetectorService.ACTION_LOGCAT_FAILED);
         filter.addAction(DetectorService.ACTION_LOGCAT_OEM_DENIED);
         filter.addAction(DetectorService.ACTION_LOGCAT_CONFIRMED);
+        filter.addAction(DetectorService.ACTION_INPUT_STATE_CHANGED);
         filter.addAction(DetectorService.ACTION_LOGCAT_VERIFYING);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(keyReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -239,9 +254,79 @@ public class MainActivity extends AppCompatActivity {
         unregisterReceiver(keyReceiver);
     }
 
+    @Override protected void onDestroy() {
+        rikka.shizuku.Shizuku.removeRequestPermissionResultListener(shizukuPermission);
+        super.onDestroy();
+    }
+
+    private void chooseDetectionBackend() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("检测方式")
+                .setSingleChoiceItems(new String[]{"Shizuku 底层按键（推荐）", "系统日志（兼容模式）"},
+                        DetectionBackend.usesShizuku(this) ? 0 : 1, (dialog, which) -> {
+                            boolean wasRunning = DetectorService.isRunning();
+                            DetectorService.setDetectMode(false);
+                            detectMode = false;
+                            btnDetect.setText("开始检测");
+                            // Stop the old backend synchronously before saving the new selection.
+                            DetectorService.stopForBackendChange(this);
+                            serviceRunning = false;
+                            getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE).edit()
+                                    .putString(DetectionBackend.KEY, which == 0
+                                            ? DetectionBackend.SHIZUKU : DetectionBackend.LOGCAT)
+                                    .putBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, wasRunning).apply();
+                            oemLogcatDenied = false;
+                            dialog.dismiss();
+                            updateBackendLabel();
+                            applySkippedState(false);
+                            refreshServiceStatus(true);
+                            if (which == 0) authorizeShizuku();
+                            else if (wasRunning && isPermissionGranted())
+                                permPoller.postDelayed(this::startDetectorService, 300);
+                        })
+                .setNegativeButton("取消", null).show();
+    }
+
+    private void updateBackendLabel() {
+        ((MaterialButton) findViewById(R.id.btnDetectionBackend)).setText(
+                DetectionBackend.usesShizuku(this)
+                        ? "检测方式：Shizuku 底层按键（点击切换）" : "检测方式：系统日志（点击切换）");
+    }
+
+    private void authorizeShizuku() {
+        if (!Settings.canDrawOverlays(this)) {
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        if (!DetectionBackend.isShizukuAvailable()) {
+            new MaterialAlertDialogBuilder(this).setTitle("请先启动 Shizuku")
+                    .setMessage("在 Shizuku 中通过无线调试或电脑 ADB 启动服务，然后返回本应用点击启用。非 Root 模式下，手机重启后需要重新启动 Shizuku。")
+                    .setPositiveButton("打开 Shizuku", (d, w) -> {
+                        Intent launch = getPackageManager().getLaunchIntentForPackage("moe.shizuku.privileged.api");
+                        if (launch != null) startActivity(launch);
+                        else startActivity(new Intent(Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://shizuku.rikka.app/download/")));
+                    }).setNegativeButton("稍后", null).show();
+            return;
+        }
+        if (DetectionBackend.isShizukuGranted()) {
+            // Allow onDestroy of the previous detector to finish before starting its replacement.
+            permPoller.postDelayed(this::startDetectorService, 300);
+        } else {
+            try { rikka.shizuku.Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST); }
+            catch (RuntimeException e) {
+                Snackbar.make(findViewById(android.R.id.content),
+                        "Shizuku 授权请求失败，请检查 Shizuku 是否运行。", Snackbar.LENGTH_LONG).show();
+            }
+        }
+    }
+
     // ── View wiring ─────────────────────────────────────────────────────────
 
     private void bindViews() {
+        findViewById(R.id.btnDetectionBackend).setOnClickListener(v -> chooseDetectionBackend());
+        updateBackendLabel();
         cardSetupBanner    = findViewById(R.id.cardSetupBanner);
         tvBannerTitle      = findViewById(R.id.tvBannerTitle);
         tvBannerBody       = findViewById(R.id.tvBannerBody);
@@ -272,6 +357,7 @@ public class MainActivity extends AppCompatActivity {
         // Re-open setup from the banner
         MaterialButton btnReopenSetup = findViewById(R.id.btnReopenSetup);
         btnReopenSetup.setOnClickListener(v -> {
+            if (DetectionBackend.usesShizuku(this)) { authorizeShizuku(); return; }
             boolean permGranted      = isPermissionGranted();
             boolean oemEverConfirmed = DetectorService.isLogcatEverConfirmed(this);
             boolean oemDeniedPersist = DetectorService.isLogcatDenied(this);
@@ -316,6 +402,11 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(new Intent(this, SetupActivity.class)));
 
         cardStatus.setOnClickListener(v -> {
+            if (DetectionBackend.usesShizuku(this)) {
+                if (DetectorService.isRunning() && DetectionBackend.isShizukuGranted()) stopDetectorService();
+                else authorizeShizuku();
+                return;
+            }
             if (!isPermissionGranted()) {
                 startActivity(new Intent(this, SetupActivity.class));
                 return;
@@ -486,6 +577,16 @@ public class MainActivity extends AppCompatActivity {
      * handled inline by the status card - no need to block the whole UI.
      */
     private void applySkippedState(boolean oemDenied) {
+        if (DetectionBackend.usesShizuku(this)) {
+            cardSetupBanner.setVisibility(View.GONE);
+            cardStatus.setVisibility(View.VISIBLE);
+            for (int id : new int[]{R.id.cardDetector, R.id.cardBindings, R.id.cardCameraShutter}) {
+                View view = findViewById(id);
+                view.setAlpha(1f);
+                setViewTreeEnabled(view, true);
+            }
+            return;
+        }
         boolean skipped     = wasSetupSkipped();
         boolean permGranted = isPermissionGranted();
         boolean oemEverConfirmed = DetectorService.isLogcatEverConfirmed(this);
@@ -579,6 +680,31 @@ public class MainActivity extends AppCompatActivity {
     // ── Status card ─────────────────────────────────────────────────────────
 
     private void refreshServiceStatus(boolean animate) {
+        if (DetectionBackend.usesShizuku(this)) {
+            serviceRunning = DetectorService.isRunning();
+            boolean ready = DetectorService.isInputReady();
+            if (!Settings.canDrawOverlays(this)) {
+                tvStatusTitle.setText("需要允许悬浮窗权限");
+                tvStatusSub.setText("点击授权，以便在后台启动映射的应用。");
+            } else if (!DetectionBackend.isShizukuAvailable()) {
+                tvStatusTitle.setText("Shizuku 未运行");
+                tvStatusSub.setText("点击查看启动方式；此模式无需系统日志授权。");
+            } else if (!DetectionBackend.isShizukuGranted()) {
+                tvStatusTitle.setText("需要 Shizuku 授权");
+                tvStatusSub.setText("点击授权并启用底层按键监听。");
+            } else {
+                tvStatusTitle.setText(ready ? "已启用，正在监听 Plus 键"
+                        : (serviceRunning ? "正在恢复底层按键监听" : "已暂停，点击启用"));
+                tvStatusSub.setText(serviceRunning ? DetectorService.getInputStatus()
+                        : "直接检测按下和松开，无需读取系统日志。");
+            }
+            ivStatusIcon.setImageResource(ready ? R.drawable.ic_status_active : R.drawable.ic_status_warning);
+            cardStatus.setCardBackgroundColor(resolveColor(ready
+                    ? com.google.android.material.R.attr.colorPrimaryContainer
+                    : com.google.android.material.R.attr.colorSurfaceVariant));
+            btnEnableService.setVisibility(View.GONE);
+            return;
+        }
         int     savedCode = prefs.getInt(ActionExecutor.KEY_DETECTED_KEYCODE,
                 ActionExecutor.KEYCODE_UNSET);
         boolean keySet  = savedCode != ActionExecutor.KEYCODE_UNSET;
@@ -662,12 +788,14 @@ public class MainActivity extends AppCompatActivity {
     private boolean serviceWasRunningBeforeDetect = false;
 
     private void toggleDetectMode() {
+        if (DetectionBackend.usesShizuku(this) && !isPermissionGranted()) { authorizeShizuku(); return; }
         detectMode = !detectMode;
         if (detectMode) {
             serviceWasRunningBeforeDetect = serviceRunning;
             btnDetect.setText("停止检测");
             tvDetectedKeycode.setText("现在请按下 Plus 键…");
-            tvDetectedAction.setText("正在通过系统日志监听");
+            tvDetectedAction.setText(DetectionBackend.usesShizuku(this)
+                    ? "正在通过 Shizuku 监听底层按键" : "正在通过系统日志监听");
             DetectorService.setDetectMode(true);
             // Do not replace an already-approved reader session just to enter
             // detect mode; a replacement would require another system approval.
@@ -729,6 +857,8 @@ public class MainActivity extends AppCompatActivity {
     // ── Permission ───────────────────────────────────────────────────────────
 
     private boolean isPermissionGranted() {
+        if (DetectionBackend.usesShizuku(this))
+            return DetectionBackend.isShizukuGranted() && Settings.canDrawOverlays(this);
         boolean logGranted = checkSelfPermission("android.permission.READ_LOGS")
                 == PackageManager.PERMISSION_GRANTED;
         boolean overlayGranted = (android.os.Build.VERSION.SDK_INT

@@ -38,6 +38,11 @@ public class HeartbeatReceiver extends BroadcastReceiver {
             return;
         }
 
+        if (DetectionBackend.usesShizuku(context)) {
+            DetectionBackend.recover(context);
+            return;
+        }
+
         boolean hasLogPerm = context.checkSelfPermission("android.permission.READ_LOGS")
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
 

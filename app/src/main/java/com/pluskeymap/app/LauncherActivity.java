@@ -23,7 +23,7 @@ public class LauncherActivity extends AppCompatActivity {
         boolean skipped   = getSharedPreferences(SetupActivity.PREFS_SETUP, MODE_PRIVATE)
                 .getBoolean(SetupActivity.KEY_SKIPPED, false);
 
-        if (setupDone || skipped) {
+        if (setupDone || skipped || DetectionBackend.usesShizuku(this)) {
             Intent main = new Intent(this, MainActivity.class);
             boolean wasRunning = getSharedPreferences(
                     SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)

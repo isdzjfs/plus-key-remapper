@@ -37,6 +37,11 @@ public class KeepaliveWorker extends Worker {
             return Result.success();
         }
 
+        if (DetectionBackend.usesShizuku(ctx)) {
+            DetectionBackend.recover(ctx);
+            return Result.success();
+        }
+
         boolean hasLogPerm = ctx.checkSelfPermission("android.permission.READ_LOGS")
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
         if (!hasLogPerm) {

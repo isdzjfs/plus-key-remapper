@@ -52,6 +52,13 @@ public class SetupActivity extends AppCompatActivity {
         setContentView(R.layout.activity_setup);
 
         tvPermStatus = findViewById(R.id.tvPermStatus);
+        findViewById(R.id.btnSetupShizuku).setOnClickListener(v -> {
+            DetectorService.stopForBackendChange(this);
+            getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE).edit()
+                    .putString(DetectionBackend.KEY, DetectionBackend.SHIZUKU).apply();
+            startActivity(new Intent(this, MainActivity.class));
+            finish();
+        });
 
         TextView tvCommand = findViewById(R.id.tvAdbCommand);
         tvCommand.setText(ADB_COMMAND);

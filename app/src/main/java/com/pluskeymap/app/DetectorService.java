@@ -38,6 +38,7 @@ public class DetectorService extends Service {
     public static final String ACTION_LOGCAT_FAILED     = "com.pluskeymap.app.LOGCAT_FAILED";
     public static final String ACTION_LOGCAT_CONFIRMED  = "com.pluskeymap.app.LOGCAT_CONFIRMED";
     public static final String ACTION_LOGCAT_VERIFYING  = "com.pluskeymap.app.LOGCAT_VERIFYING";
+    public static final String ACTION_INPUT_STATE_CHANGED = "com.pluskeymap.app.INPUT_STATE_CHANGED";
     public static final String ACTION_LOGCAT_OEM_DENIED = "com.pluskeymap.app.LOGCAT_OEM_DENIED";
     public static final String ACTION_TOGGLE_SERVICE         = "com.pluskeymap.app.TOGGLE_SERVICE";
     public static final String ACTION_UPDATE_PERSISTENT_NOTIF = "com.pluskeymap.app.UPDATE_PERSISTENT_NOTIF";
@@ -52,6 +53,11 @@ public class DetectorService extends Service {
     private PowerManager.WakeLock wakeLock;
     private ActionExecutor executor;
     private SharedPreferences prefs;
+    private ShizukuKeyWatcher shizukuWatcher;
+    private RawKeyGesture rawGesture;
+    private boolean shizukuMode;
+    private static volatile boolean inputReady;
+    private static volatile String inputStatus = "已暂停";
 
     private BroadcastReceiver screenOffReceiver;
 
@@ -130,6 +136,9 @@ public class DetectorService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            isStopping = true;
+            getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE).edit()
+                    .putBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false).apply();
             KeepaliveJobService.cancel(this);
             HeartbeatReceiver.cancel(this);
             stopEverything();
@@ -140,19 +149,31 @@ public class DetectorService extends Service {
 
         if (ACTION_TOGGLE_SERVICE.equals(intent != null ? intent.getAction() : null)) {
             if (isRunning()) {
+                isStopping = true;
+                getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE).edit()
+                        .putBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false).apply();
                 HeartbeatReceiver.cancel(this);
                 stopEverything();
                 stopForeground(true);
                 stopSelf();
-                updatePersistentNotification();
                 return START_NOT_STICKY;
             }
         }
 
         if (ACTION_UPDATE_PERSISTENT_NOTIF.equals(intent != null ? intent.getAction() : null)) {
-            updatePersistentNotification();
-            return START_NOT_STICKY;
+            if (isRunning()) updatePersistentNotification();
+            else stopSelf(startId);
+            return isRunning() && shizukuMode ? START_STICKY : START_NOT_STICKY;
         }
+
+        boolean selectedShizuku = DetectionBackend.usesShizuku(this);
+        if (isRunning() && selectedShizuku == shizukuMode) {
+            if (intent != null && intent.hasExtra(EXTRA_DETECT_MODE))
+                setDetectMode(intent.getBooleanExtra(EXTRA_DETECT_MODE, false));
+            return shizukuMode ? START_STICKY : START_NOT_STICKY;
+        }
+        if (instance == this) stopEverything();
+        shizukuMode = selectedShizuku;
 
         // Android automatically denies a new full-device log request from a
         // background app. Only MainActivity adds this extra, after it is visible.
@@ -160,7 +181,7 @@ public class DetectorService extends Service {
         // own-logs-only state and pretend that Plus-key detection recovered.
         boolean foregroundAuthAttempt = intent != null
                 && intent.getBooleanExtra(EXTRA_FOREGROUND_AUTH_ATTEMPT, false);
-        if (!foregroundAuthAttempt) {
+        if (!shizukuMode && !foregroundAuthAttempt) {
             Log.w(TAG, "Ignoring background detector start; foreground log approval required");
             KeepaliveJobService.postPermissionLostNotificationStatic(this);
             stopForeground(true);
@@ -277,6 +298,19 @@ public class DetectorService extends Service {
             };
         }
         prefs = ActionExecutor.prefs(this);
+        rawGesture = new RawKeyGesture(new RawKeyGesture.Scheduler() {
+            @Override public void postDelayed(Runnable r, long delay) { handler.postDelayed(r, delay); }
+            @Override public void cancel(Runnable r) { handler.removeCallbacks(r); }
+        }, new RawKeyGesture.Actions() {
+            @Override public void single() {
+                dispatchAction(ActionExecutor.KEY_ACTION_SINGLE, ActionExecutor.KEY_LAUNCH_PKG_SINGLE,
+                        ActionExecutor.KEY_CUSTOM_INTENT_SINGLE);
+            }
+            @Override public void longPress() {
+                dispatchAction(ActionExecutor.KEY_ACTION_LONG, ActionExecutor.KEY_LAUNCH_PKG_LONG,
+                        ActionExecutor.KEY_CUSTOM_INTENT_LONG);
+            }
+        }, LONG_PRESS_MS);
 
         if (intent != null && intent.hasExtra(EXTRA_DETECT_MODE)) {
             detectMode = intent.getBooleanExtra(EXTRA_DETECT_MODE, false);
@@ -287,7 +321,40 @@ public class DetectorService extends Service {
 
         acquireWakeLock();
         registerScreenOffReceiver();
-        startLogcat();
+        // Promote before binding/launching any asynchronous reader.
+        startForeground(NOTIF_ID, buildMinimalNotification());
+        if (shizukuMode) {
+            shizukuWatcher = new ShizukuKeyWatcher(this, new ShizukuKeyWatcher.Listener() {
+                @Override public void state(boolean ready, String message) {
+                    if (isStopping) return;
+                    inputReady = ready;
+                    inputStatus = message;
+                    if (!ready) {
+                        rawGesture.reset();
+                        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+                    } else {
+                        acquireWakeLock();
+                        KeepaliveJobService.dismissPermNotification(DetectorService.this);
+                    }
+                    refreshForegroundNotification();
+                    sendBroadcast(new Intent(ACTION_INPUT_STATE_CHANGED).setPackage(getPackageName()));
+                }
+                @Override public void key(boolean down, long eventTimeMs) {
+                    if (isStopping) return;
+                    Log.d(TAG, "Raw Plus key " + (down ? "DOWN" : "UP") + " time=" + eventTimeMs);
+                    if (detectMode) {
+                        rawGesture.reset();
+                        sendBroadcast(new Intent(ACTION_KEY_DETECTED).setPackage(getPackageName())
+                                .putExtra(EXTRA_KEYCODE, LogcatWatcher.PLUS_KEY_CODE)
+                                .putExtra(EXTRA_ACTION, down ? "down" : "up")
+                                .putExtra("source", "shizuku"));
+                        return;
+                    }
+                    rawGesture.onKey(down, eventTimeMs, isEffectiveSingleOnlyMode());
+                }
+            });
+            shizukuWatcher.start();
+        } else startLogcat();
         // Ensure OS-persisted job is alive (re-registers after SIGKILL wipe)
         KeepaliveJobService.schedule(this);
         // Periodic health check. If this session dies it will notify the user,
@@ -302,7 +369,7 @@ public class DetectorService extends Service {
                 persistentEnabled ? buildPersistentNotification() : buildMinimalNotification());
         // A restarted service cannot reacquire full-device logs in the
         // background, so recovery must go through the notification/MainActivity.
-        return START_NOT_STICKY;
+        return shizukuMode ? START_STICKY : START_NOT_STICKY;
     }
 
     // ── Logcat callbacks ────────────────────────────────────────────────────
@@ -327,7 +394,7 @@ public class DetectorService extends Service {
 
     /** Stops cleanly and asks the user to recreate the log session in foreground. */
     private void stopForLogcatSessionLoss(String message, String broadcastAction) {
-        if (isStopping) return;
+        if (isStopping || shizukuMode) return;
         Log.w(TAG, message);
         getSharedPreferences(PREFS_LOGCAT, MODE_PRIVATE)
                 .edit()
@@ -345,8 +412,8 @@ public class DetectorService extends Service {
     }
 
     public void handleLogcatKey(String action) {
-        if (handler == null) return;
-        handler.post(() -> processKeyEvent(action));
+        if (handler == null || shizukuMode || isStopping) return;
+        handler.post(() -> { if (!isStopping && !shizukuMode) processKeyEvent(action); });
     }
 
     // ── Core gesture state machine ──────────────────────────────────────────
@@ -694,6 +761,10 @@ public class DetectorService extends Service {
         screenOffReceiver = new BroadcastReceiver() {
             @Override public void onReceive(android.content.Context ctx, Intent intent) {
                 String action = intent.getAction();
+                if (shizukuMode) {
+                    if (Intent.ACTION_USER_PRESENT.equals(action) && executor != null) executor.onUserPresent();
+                    return; // Shizuku has its own reader/connection health checks; READ_LOGS is irrelevant.
+                }
                 if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                     logd("Screen off — verifying logcat process");
                     boolean processAlive = logcatWatcher != null && logcatWatcher.isProcessAlive();
@@ -729,6 +800,11 @@ public class DetectorService extends Service {
     }
 
     private void stopEverything() {
+        inputReady = false;
+        logcatConfirmed = false;
+        logcatVerifying = false;
+        if (rawGesture != null) rawGesture.reset();
+        if (shizukuWatcher != null) { shizukuWatcher.stop(); shizukuWatcher = null; }
         if (handler != null) {
             handler.removeCallbacks(longPressRunnable);
             handler.removeCallbacks(singleRunnable);
@@ -762,7 +838,7 @@ public class DetectorService extends Service {
         PendingIntent pi = PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Plus 键重映射")
-                .setContentText("正在后台运行")
+                .setContentText(shizukuMode ? inputStatus : "正在后台运行")
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setSilent(true)
@@ -802,7 +878,7 @@ public class DetectorService extends Service {
 
         Notification notif = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Plus 键重映射")
-                .setContentText(running ? "已启用，正在监听 Plus 键" : "已暂停")
+                .setContentText(running ? (shizukuMode ? inputStatus : "已启用，正在监听 Plus 键") : "已暂停")
                 .setSmallIcon(running ? android.R.drawable.ic_menu_compass : android.R.drawable.ic_media_pause)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setSilent(true)
@@ -829,6 +905,17 @@ public class DetectorService extends Service {
     }
 
     static boolean isRunning() { return instance != null && !instance.isStopping; }
+    static void stopForBackendChange(Context context) {
+        DetectorService service = instance;
+        if (service != null) {
+            service.isStopping = true;
+            service.stopEverything();
+            service.stopForeground(true);
+            service.stopSelf();
+        } else context.stopService(new Intent(context, DetectorService.class));
+    }
+    static boolean isInputReady() { return isRunning() && inputReady; }
+    static String getInputStatus() { return inputStatus; }
     static boolean isLogcatConfirmed() { return logcatConfirmed; }
 
     /**
@@ -849,6 +936,7 @@ public class DetectorService extends Service {
         DetectorService service = instance;
         if (service == null || service.handler == null) return;
         service.handler.post(() -> {
+            if (service.rawGesture != null) service.rawGesture.reset();
             if (service.logcatWatcher != null) {
                 service.logcatWatcher.setDualMode(!service.isEffectiveSingleOnlyMode());
             }
@@ -883,6 +971,7 @@ public class DetectorService extends Service {
      * process started, but not that the full-device log dialog was accepted.
      */
     public void onLogcatVerifying() {
+        if (isStopping || shizukuMode) return;
         logcatVerifying  = true;
         logcatConfirmed  = false;
         Intent broadcast = new Intent(ACTION_LOGCAT_VERIFYING);
@@ -891,6 +980,7 @@ public class DetectorService extends Service {
     }
 
     public void onLogcatConfirmed() {
+        if (isStopping || shizukuMode) return;
         logcatVerifying = false;
         logcatConfirmed = true;
         // Persist so UI can show correct state even after process is killed and restarted.
@@ -906,15 +996,19 @@ public class DetectorService extends Service {
         sendBroadcast(broadcast);
     }
 
-    static void setDetectMode(boolean active) { detectMode = active; }
+    static void setDetectMode(boolean active) {
+        detectMode = active;
+        if (instance != null && instance.rawGesture != null) instance.rawGesture.reset();
+    }
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public void onDestroy() {
+        isStopping = true;
         instance = null;
         stopEverything();
-        updatePersistentNotification();
+        stopForeground(true);
         super.onDestroy();
     }
 }

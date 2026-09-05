@@ -34,6 +34,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PlusKeyMapper">
 
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
         <!-- Entry point -->
         <activity
             android:name=".LauncherActivity"
@@ -75,7 +83,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="读取系统日志，以便在熄屏时检测 Plus 键操作" />
+                android:value="监听用户选择的 Plus 硬件按键，以便在熄屏时执行映射操作" />
         </service>
 
         <!-- Reopens setup after the one-time ADB command is completed -->

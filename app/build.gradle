@@ -10,8 +10,8 @@ android {
         applicationId "com.pluskeymap.app"
         minSdk 26
         targetSdk 35
-        versionCode 5
-        versionName "1.4"
+        versionCode 6
+        versionName "1.5"
     }
 
     buildTypes {
@@ -22,6 +22,7 @@ android {
     }
     buildFeatures {
         buildConfig true
+        aidl true
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
@@ -30,6 +31,9 @@ android {
 }
 
 dependencies {
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
+    testImplementation 'junit:junit:4.13.2'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.0'
