@@ -26,7 +26,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="只需通过 ADB 授予一次 READ_LOGS 权限，以后无需重复操作。"
+            android:text="ADB 的 READ_LOGS 授权通常只需一次；新的日志读取会话仍可能要求你在 APP 前台确认。"
             android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:layout_marginBottom="28dp" />
@@ -311,7 +311,7 @@
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant"
                     android:lineSpacingMultiplier="1.4"
-                    android:text="READ_LOGS：OxygenOS 会在任何应用检测到 Plus 键前将其拦截。无需 Root 的唯一检测方式是读取系统日志，因此需要一次性授予此权限。\n\nSYSTEM_ALERT_WINDOW：让本应用在你使用其他应用时继续工作，使 Plus 键映射在整个手机上生效，而不仅限于主屏幕。\n\n这两项授权不会影响其他应用。" />
+                    android:text="READ_LOGS：OxygenOS 会在任何应用检测到 Plus 键前将其拦截。无需 Root 的检测方式需要读取系统日志。ADB 静态授权通常只需一次；Android 结束日志会话后，可能再次要求你打开 APP 并确认“允许访问所有设备日志”。\n\nSYSTEM_ALERT_WINDOW：让本应用在你使用其他应用时继续工作，使 Plus 键映射在整个手机上生效，而不仅限于主屏幕。\n\n这两项授权不会影响其他应用。" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

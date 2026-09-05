@@ -1,6 +1,5 @@
 package com.pluskeymap.app;
 
-import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -45,6 +44,7 @@ public class DetectorService extends Service {
     public static final String EXTRA_KEYCODE     = "keycode";
     public static final String EXTRA_ACTION      = "action";
     public static final String EXTRA_DETECT_MODE = "detect_mode";
+    public static final String EXTRA_FOREGROUND_AUTH_ATTEMPT = "foreground_auth_attempt";
 
     // ── State ───────────────────────────────────────────────────────────────
     private LogcatWatcher logcatWatcher;
@@ -55,9 +55,6 @@ public class DetectorService extends Service {
 
     private BroadcastReceiver screenOffReceiver;
 
-    private static final int  RESTART_ALARM_RC = 9902;
-    private static final long RESTART_DELAY_MS = 3_000L;
-
     private static DetectorService instance;
     private boolean isStopping = false;
     static  boolean       detectMode      = false;
@@ -65,12 +62,12 @@ public class DetectorService extends Service {
 
     static final String PREFS_LOGCAT              = "pkm_logcat_state";
     static final String KEY_LOGCAT_DENIED         = "logcat_oem_denied";
-    // Persisted across restarts — true once the OEM dialog has been accepted at
-    // least once. Unlike logcatConfirmed (in-memory only), this survives process
-    // death so the UI can distinguish "never confirmed" from "confirmed but killed".
+    // Persisted across restarts — true once a full-device log session has been
+    // confirmed. Unlike logcatConfirmed (in-memory only), this survives process
+    // death so the UI can distinguish "never confirmed" from "session lost".
     static final String KEY_LOGCAT_EVER_CONFIRMED = "logcat_ever_confirmed";
-    // In-memory only — true once generic logcat access is established but OEM key
-    // tag confirmation is still pending (user hasn't pressed the Plus Key yet).
+    // In-memory only — true once own-log access is established but a line from
+    // another process has not yet confirmed full-device access.
     private static volatile boolean logcatVerifying = false;
 
     private long lastUpTime    = 0;
@@ -154,7 +151,21 @@ public class DetectorService extends Service {
 
         if (ACTION_UPDATE_PERSISTENT_NOTIF.equals(intent != null ? intent.getAction() : null)) {
             updatePersistentNotification();
-            return START_STICKY;
+            return START_NOT_STICKY;
+        }
+
+        // Android automatically denies a new full-device log request from a
+        // background app. Only MainActivity adds this extra, after it is visible.
+        // Reject START_STICKY/Job/Alarm restarts so they cannot enter a silent
+        // own-logs-only state and pretend that Plus-key detection recovered.
+        boolean foregroundAuthAttempt = intent != null
+                && intent.getBooleanExtra(EXTRA_FOREGROUND_AUTH_ATTEMPT, false);
+        if (!foregroundAuthAttempt) {
+            Log.w(TAG, "Ignoring background detector start; foreground log approval required");
+            KeepaliveJobService.postPermissionLostNotificationStatic(this);
+            stopForeground(true);
+            stopSelf(startId);
+            return START_NOT_STICKY;
         }
 
         if (isStopping) return START_NOT_STICKY;
@@ -279,8 +290,8 @@ public class DetectorService extends Service {
         startLogcat();
         // Ensure OS-persisted job is alive (re-registers after SIGKILL wipe)
         KeepaliveJobService.schedule(this);
-        // Belt-and-suspenders: 3-minute repeating alarm that lives in AlarmManagerService
-        // and survives our process being SIGKILLed before onDestroy() runs.
+        // Periodic health check. If this session dies it will notify the user,
+        // because a replacement log reader must be authorized in foreground.
         HeartbeatReceiver.schedule(this);
 
         boolean persistentEnabled = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
@@ -289,47 +300,43 @@ public class DetectorService extends Service {
         // same-package notifs and breaks when two IDs briefly coexist).
         startForeground(NOTIF_ID,
                 persistentEnabled ? buildPersistentNotification() : buildMinimalNotification());
-        return START_STICKY;
+        // A restarted service cannot reacquire full-device logs in the
+        // background, so recovery must go through the notification/MainActivity.
+        return START_NOT_STICKY;
     }
 
     // ── Logcat callbacks ────────────────────────────────────────────────────
 
     public void onLogcatFailed() {
-        Log.w(TAG, "onLogcatFailed: stopping service");
-        getSharedPreferences(PREFS_LOGCAT, MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_LOGCAT_DENIED, true)
-                .putBoolean(KEY_LOGCAT_EVER_CONFIRMED, false)
-                .apply();
-        isStopping = true;
-        Intent broadcast = new Intent(ACTION_LOGCAT_FAILED);
-        broadcast.setPackage(getPackageName());
-        sendBroadcast(broadcast);
-        stopEverything();
-        stopForeground(true);
-        stopSelf();
+        stopForLogcatSessionLoss(
+                "onLogcatFailed: full-device log access unavailable; stopping service",
+                ACTION_LOGCAT_FAILED);
     }
 
     public void onLogcatKilledByDoze() {
-        if (isStopping) return;
-        Log.w(TAG, "onLogcatKilledByDoze: restarting logcat silently (broad filter)");
-        // Re-acquire wakelock — Doze may have released it
-        acquireWakeLock();
-        // FIX: restart with startBroad=true so we skip the narrow filter.
-        // After a Doze kill, OEM key tags are still suppressed → narrow filter
-        // produces nothing → 8s timeout → false onLogcatFailed() → service dies.
-        handler.postDelayed(this::startLogcatBroad, 500);
+        stopForLogcatSessionLoss(
+                "Logcat reader exited; foreground re-authorization required",
+                ACTION_LOGCAT_FAILED);
     }
 
     public void onLogcatOemDenied() {
-        Log.w(TAG, "onLogcatOemDenied: OEM dialog denied mid-session");
+        stopForLogcatSessionLoss(
+                "OEM log access dialog denied; foreground re-authorization required",
+                ACTION_LOGCAT_OEM_DENIED);
+    }
+
+    /** Stops cleanly and asks the user to recreate the log session in foreground. */
+    private void stopForLogcatSessionLoss(String message, String broadcastAction) {
+        if (isStopping) return;
+        Log.w(TAG, message);
         getSharedPreferences(PREFS_LOGCAT, MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_LOGCAT_DENIED, true)
                 .putBoolean(KEY_LOGCAT_EVER_CONFIRMED, false)
                 .apply();
         isStopping = true;
-        Intent broadcast = new Intent(ACTION_LOGCAT_OEM_DENIED);
+        KeepaliveJobService.postPermissionLostNotificationStatic(this);
+        Intent broadcast = new Intent(broadcastAction);
         broadcast.setPackage(getPackageName());
         sendBroadcast(broadcast);
         stopEverything();
@@ -644,11 +651,6 @@ public class DetectorService extends Service {
         startLogcatInternal(false);
     }
 
-    /** Used after Doze kills — skips narrow filter to avoid false-deny timeout. */
-    private void startLogcatBroad() {
-        startLogcatInternal(true);
-    }
-
     private void startLogcatInternal(boolean broad) {
         if (logcatWatcher != null) logcatWatcher.stop();
         if (logcatThread != null && logcatThread.isAlive()) {
@@ -675,17 +677,17 @@ public class DetectorService extends Service {
     }
 
     /**
-     * Registers a receiver for ACTION_SCREEN_OFF to re-acquire the wakelock
-     * and verify logcat process liveness (not just thread liveness).
+     * Registers a receiver for ACTION_SCREEN_OFF to verify logcat process
+     * liveness (not just thread liveness).
      *
      * Also handles ACTION_USER_PRESENT (screen unlocked after being off):
      * immediately checks READ_LOGS permission so the re-auth notification
      * appears as soon as the user unlocks, rather than waiting for the next
      * JobService/heartbeat cycle (up to 3 minutes later).
      *
-     * FIX: Uses logcatWatcher.isProcessAlive() instead of logcatThread.isAlive().
-     * The thread can remain alive (blocked on readLine()) even after OxygenOS
-     * kills the child logcat process — isAlive() check was missing real kills.
+     * A lost reader cannot be recreated in the background: Android would deny
+     * full-device access. In that case the service stops and posts a notification
+     * which recreates the session only after MainActivity is visible.
      */
     private void registerScreenOffReceiver() {
         if (screenOffReceiver != null) return;
@@ -693,13 +695,10 @@ public class DetectorService extends Service {
             @Override public void onReceive(android.content.Context ctx, Intent intent) {
                 String action = intent.getAction();
                 if (Intent.ACTION_SCREEN_OFF.equals(action)) {
-                    logd("Screen off — re-acquiring wakelock and verifying logcat process");
-                    acquireWakeLock();
-                    // FIX: check real process liveness, not thread liveness
+                    logd("Screen off — verifying logcat process");
                     boolean processAlive = logcatWatcher != null && logcatWatcher.isProcessAlive();
                     if (!processAlive) {
-                        Log.w(TAG, "Logcat process dead at screen-off — restarting");
-                        startLogcat();
+                        onLogcatKilledByDoze();
                     }
                 } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
                     // If a hardware-key launch was queued while keyguard was showing,
@@ -712,14 +711,13 @@ public class DetectorService extends Service {
                     boolean hasLogPerm = checkSelfPermission("android.permission.READ_LOGS")
                             == android.content.pm.PackageManager.PERMISSION_GRANTED;
                     if (!hasLogPerm) {
-                        Log.w(TAG, "USER_PRESENT: READ_LOGS gone — notifying user");
-                        KeepaliveJobService.postPermissionLostNotificationStatic(ctx);
+                        onLogcatFailed();
                     } else {
-                        // Perm still good — verify logcat process is alive
+                        // Static permission may remain granted even though the
+                        // temporary log-reader session has ended.
                         boolean processAlive = logcatWatcher != null && logcatWatcher.isProcessAlive();
                         if (!processAlive) {
-                            Log.w(TAG, "USER_PRESENT: logcat process dead — restarting");
-                            startLogcat();
+                            onLogcatKilledByDoze();
                         }
                     }
                 }
@@ -728,35 +726,6 @@ public class DetectorService extends Service {
         IntentFilter f = new IntentFilter(Intent.ACTION_SCREEN_OFF);
         f.addAction(Intent.ACTION_USER_PRESENT);
         registerReceiver(screenOffReceiver, f);
-    }
-
-    /**
-     * Arms a one-shot alarm to restart DetectorService.
-     * Used from onDestroy so the service revives itself on OxygenOS devices
-     * that ignore START_STICKY when battery saver is active.
-     *
-     * Uses setAndAllowWhileIdle() — does not require SCHEDULE_EXACT_ALARM or
-     * USE_EXACT_ALARM (both removed; Play Store restricts them to calendar/alarm
-     * clock apps). The FGS specialUse + JobScheduler heartbeat are the primary
-     * keepalive; this alarm is a last-resort fallback where a few minutes of
-     * Doze deferral is acceptable.
-     */
-    private void scheduleRestartAlarm() {
-        AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
-        if (am == null) return;
-        Intent i = new Intent(this, DetectorService.class)
-                .setAction(ACTION_START)
-                .putExtra(EXTRA_DETECT_MODE, detectMode);
-        PendingIntent pi = PendingIntent.getService(this, RESTART_ALARM_RC, i,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        long triggerAt = System.currentTimeMillis() + RESTART_DELAY_MS;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-        } else {
-            am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-        }
-        logd("Restart alarm scheduled in " + RESTART_DELAY_MS + " ms (inexact)");
     }
 
     private void stopEverything() {
@@ -859,7 +828,7 @@ public class DetectorService extends Service {
         startForeground(NOTIF_ID, notif);
     }
 
-    static boolean isRunning() { return instance != null; }
+    static boolean isRunning() { return instance != null && !instance.isStopping; }
     static boolean isLogcatConfirmed() { return logcatConfirmed; }
 
     /**
@@ -910,10 +879,8 @@ public class DetectorService extends Service {
     static boolean isLogcatVerifying() { return logcatVerifying; }
 
     /**
-     * Called by LogcatWatcher when generic logcat output is received — confirms
-     * the process started and ADB permission is fine, but does NOT mean the OEM
-     * system dialog was accepted. UI should move to "verifying" state and prompt
-     * the user to press the Plus Key once.
+     * Called after own-log output is received. This confirms that the reader
+     * process started, but not that the full-device log dialog was accepted.
      */
     public void onLogcatVerifying() {
         logcatVerifying  = true;
@@ -945,9 +912,6 @@ public class DetectorService extends Service {
 
     @Override
     public void onDestroy() {
-        if (!isStopping) {
-            scheduleRestartAlarm();
-        }
         instance = null;
         stopEverything();
         updatePersistentNotification();

@@ -78,24 +78,24 @@
                 android:value="读取系统日志，以便在熄屏时检测 Plus 键操作" />
         </service>
 
-        <!-- Receives alarm-based restart triggers (used by RestartReceiver.schedule()) -->
+        <!-- Reopens setup after the one-time ADB command is completed -->
         <receiver
             android:name=".RestartReceiver"
             android:exported="false" />
 
-        <!-- JobScheduler keepalive — fires every 60s, OS-persisted, survives SIGKILL -->
+        <!-- JobScheduler health check — notifies when foreground re-auth is required -->
         <service
             android:name=".KeepaliveJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- WorkManager internal job service — required for KeepaliveWorker periodic jobs -->
+        <!-- WorkManager internal job service — required for periodic health checks -->
         <service
             android:name="androidx.work.impl.background.systemjob.SystemJobService"
             android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- Periodic heartbeat alarm receiver — restarts DetectorService if killed -->
+        <!-- Periodic heartbeat — notifies if the detector session is lost -->
         <receiver
             android:name=".HeartbeatReceiver"
             android:exported="false" />

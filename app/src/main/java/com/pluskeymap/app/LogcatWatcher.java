@@ -7,14 +7,17 @@ import android.util.Log;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Reads logcat for Plus Key events from OplusKeyEventUtil lines.
  *
- * OxygenOS 15 permanently suppresses OEM logcat tags for third-party apps.
- * Always uses broad filter. Watchdog detects actual process death rather than
- * silence — OxygenOS throttles logcat output in ~32s bursts so silence alone
- * is NOT an indicator of a kill.
+ * Uses a broad filter because OxygenOS does not expose a stable tag-only filter
+ * for this hardware event. Android grants full-device log access per reader
+ * session, so seeing this app's own lines only is not enough to prove that the
+ * user approved the system dialog. The watcher confirms the session as soon as
+ * it sees a threadtime-formatted line emitted by another process.
  *
  * Also tracks the foreground package by parsing ActivityManager "Displayed"
  * and "START" lines from logcat. This is the only reliable zero-permission
@@ -63,10 +66,14 @@ public class LogcatWatcher implements Runnable {
     static final long LONG_PRESS_MS_CAP = 850;
     // Max wait for first line before declaring permission denied.
     private static final long   FIRST_LINE_TIMEOUT_MS  = 20_000;
-    // Max wait for an OEM key tag line after generic logcat access is confirmed.
-    // If the user doesn't press the Plus Key within this window, declare denied.
-    private static final long   OEM_VERIFY_TIMEOUT_MS  = 60_000;
+    // Max wait for a line from another process after own-log access is confirmed.
+    // OxygenOS may batch output for ~32s, so keep this comfortably above that.
+    private static final long   FULL_ACCESS_VERIFY_TIMEOUT_MS = 60_000;
     private static final long   WATCHDOG_INTERVAL_MS   = 2_000;
+
+    /** PID field from Android's "threadtime" logcat format. */
+    private static final Pattern THREADTIME_PID_PATTERN = Pattern.compile(
+            "^\\s*\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+(\\d+)\\s+\\d+\\s+[VDIWEFAS]\\s+");
 
     public static final int PLUS_KEY_CODE = 9999;
 
@@ -167,8 +174,8 @@ public class LogcatWatcher implements Runnable {
 
     volatile Process logcatProcess;
 
-    private volatile boolean firstLineReceived = false;
-    private volatile boolean oemKeyConfirmed   = false;
+    private volatile boolean firstLineReceived   = false;
+    private volatile boolean fullAccessConfirmed = false;
 
     private long             lastEventTime = 0;
     /**
@@ -230,8 +237,10 @@ public class LogcatWatcher implements Runnable {
 
     private void runLogcat() {
         try {
+            // threadtime includes the emitter PID, which lets us distinguish
+            // full-device access from the always-readable logs of our own UID.
             logcatProcess = Runtime.getRuntime().exec(
-                    new String[]{"logcat", "-v", "tag", "-T", "1"});
+                    new String[]{"logcat", "-v", "threadtime", "-T", "1"});
 
             Thread stderrThread = new Thread(() -> {
                 try (BufferedReader r = new BufferedReader(
@@ -251,7 +260,7 @@ public class LogcatWatcher implements Runnable {
 
             Thread watchdog = new Thread(() -> {
                 long firstLineDeadline = System.currentTimeMillis() + FIRST_LINE_TIMEOUT_MS;
-                long oemVerifyDeadline = 0; // set once firstLineReceived flips
+                long fullAccessVerifyDeadline = 0; // set once firstLineReceived flips
                 while (running) {
                     try { Thread.sleep(WATCHDOG_INTERVAL_MS); } catch (InterruptedException e) { break; }
                     if (!running) break;
@@ -275,31 +284,33 @@ public class LogcatWatcher implements Runnable {
                             mainHandler.post(() -> service.onLogcatFailed());
                             return;
                         }
-                    } else if (!oemKeyConfirmed) {
-                        // Generic logcat access confirmed, waiting for OEM key tag.
-                        // Arm the OEM verify deadline on the first tick after firstLineReceived.
-                        if (oemVerifyDeadline == 0) {
-                            oemVerifyDeadline = System.currentTimeMillis() + OEM_VERIFY_TIMEOUT_MS;
+                    } else if (!fullAccessConfirmed) {
+                        // Own-log access is always available. Full-device access is
+                        // confirmed only after a line from another process arrives.
+                        if (fullAccessVerifyDeadline == 0) {
+                            fullAccessVerifyDeadline = System.currentTimeMillis()
+                                    + FULL_ACCESS_VERIFY_TIMEOUT_MS;
                         }
                         if (!alive) {
-                            Log.w(TAG, "Logcat process died during OEM verify -- Doze kill, restarting");
+                            Log.w(TAG, "Logcat process died while verifying full-device access");
                             running = false;
                             mainHandler.post(() -> service.onLogcatKilledByDoze());
                             return;
                         }
-                        if (System.currentTimeMillis() > oemVerifyDeadline) {
-                            Log.w(TAG, "OEM key tag timeout " + OEM_VERIFY_TIMEOUT_MS
-                                    + " ms -- system dialog was likely denied");
+                        if (System.currentTimeMillis() > fullAccessVerifyDeadline) {
+                            Log.w(TAG, "No external-process logs after "
+                                    + FULL_ACCESS_VERIFY_TIMEOUT_MS
+                                    + " ms -- full-device log access was not approved");
                             running = false;
                             if (logcatProcess != null) logcatProcess.destroy();
                             mainHandler.post(() -> service.onLogcatFailed());
                             return;
                         }
                     } else {
-                        // OEM key confirmed. OxygenOS throttles output in ~32s bursts --
-                        // silence is NORMAL. Only restart when process actually dies.
+                        // Full access confirmed. OxygenOS throttles output in ~32s bursts --
+                        // silence is normal. Only fail when the process actually dies.
                         if (!alive) {
-                            Log.w(TAG, "Logcat process died -- Doze kill, restarting");
+                            Log.w(TAG, "Logcat process died -- foreground re-authorization required");
                             running = false;
                             mainHandler.post(() -> service.onLogcatKilledByDoze());
                             return;
@@ -314,19 +325,19 @@ public class LogcatWatcher implements Runnable {
             while (running && (line = reader.readLine()) != null) {
                 if (!firstLineReceived) {
                     firstLineReceived = true;
-                    Log.d(TAG, "Logcat access confirmed -- waiting for OEM key tag to verify system dialog");
+                    Log.d(TAG, "Own-log access confirmed -- waiting for an external-process line");
                     mainHandler.post(() -> service.onLogcatVerifying());
                 }
+                if (!fullAccessConfirmed && isExternalProcessLine(line)) {
+                    fullAccessConfirmed = true;
+                    Log.d(TAG, "Full-device log access confirmed by external-process line");
+                    mainHandler.post(() -> service.onLogcatConfirmed());
+                }
                 // Track foreground package from ActivityManager lines.
-                // Parsed BEFORE the OEM key check so it works from the first logcat line.
+                // Parsed before the OEM key check so it works from the first logcat line.
                 parseForegroundPackage(line);
 
                 if (matchesTagPattern(line) && matchesMsgPattern(line)) {
-                    if (!oemKeyConfirmed) {
-                        oemKeyConfirmed = true;
-                        Log.d(TAG, "OEM key tag received -- system dialog was accepted, logcat confirmed");
-                        mainHandler.post(() -> service.onLogcatConfirmed());
-                    }
                     handleKeyLine();
                 }
             }
@@ -338,13 +349,29 @@ public class LogcatWatcher implements Runnable {
         } finally {
             if (running) {
                 if (firstLineReceived) {
-                    Log.w(TAG, "Logcat process killed (Doze) -- restarting silently");
+                    Log.w(TAG, "Logcat process exited -- foreground re-authorization required");
                     mainHandler.post(() -> service.onLogcatKilledByDoze());
                 } else {
                     Log.w(TAG, "Logcat exited before first line -- permission denied");
                     mainHandler.post(() -> service.onLogcatFailed());
                 }
             }
+        }
+    }
+
+    /**
+     * Returns true when a threadtime-formatted line was emitted by a process
+     * other than this app. Android always lets an app read its own logs, even
+     * when the full-device log access dialog was denied, so this is the first
+     * reliable in-band proof that the temporary full-log session is active.
+     */
+    private boolean isExternalProcessLine(String line) {
+        Matcher matcher = THREADTIME_PID_PATTERN.matcher(line);
+        if (!matcher.find()) return false;
+        try {
+            return Integer.parseInt(matcher.group(1)) != android.os.Process.myPid();
+        } catch (NumberFormatException ignored) {
+            return false;
         }
     }
 

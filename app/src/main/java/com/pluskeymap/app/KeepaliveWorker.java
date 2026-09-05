@@ -1,23 +1,18 @@
 package com.pluskeymap.app;
 
 import android.content.Context;
-import android.content.Intent;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
 /**
- * WorkManager periodic worker that ensures DetectorService stays alive.
+ * WorkManager periodic health check for DetectorService.
  *
- * OxygenOS respects WorkManager constraints better than raw AlarmManager
- * for background apps. This fires every 15 minutes and restarts the service
- * if it has been killed — belt-and-suspenders on top of START_STICKY + alarms.
- *
- * WorkManager is initialized in PlusKeyApp and scheduled from DetectorService
- * on first start. Uses KEEP policy so only one periodic job exists.
+ * A new full-device log reader cannot be authorized from a background worker.
+ * If the detector is gone, this worker posts the foreground re-auth notification
+ * instead of starting a service that could only see the app's own logs.
  */
 public class KeepaliveWorker extends Worker {
 
@@ -32,7 +27,7 @@ public class KeepaliveWorker extends Worker {
     public Result doWork() {
         Context ctx = getApplicationContext();
 
-        // Only restart if user had the service running (not explicitly stopped)
+        // Only monitor if the user had the service running (not explicitly stopped).
         boolean wasRunning = ctx.getSharedPreferences(SettingsActivity.PREFS_SETTINGS,
                 Context.MODE_PRIVATE)
                 .getBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false);
@@ -45,16 +40,14 @@ public class KeepaliveWorker extends Worker {
         boolean hasLogPerm = ctx.checkSelfPermission("android.permission.READ_LOGS")
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
         if (!hasLogPerm) {
-            Log.w(TAG, "doWork: READ_LOGS revoked — notifying user");
+            Log.w(TAG, "doWork: static READ_LOGS grant missing — notifying user");
             KeepaliveJobService.postPermissionLostNotificationStatic(ctx);
             return Result.success();
         }
 
         if (!DetectorService.isRunning()) {
-            Log.w(TAG, "doWork: DetectorService not running — restarting");
-            Intent svc = new Intent(ctx, DetectorService.class)
-                    .setAction(DetectorService.ACTION_START);
-            ContextCompat.startForegroundService(ctx, svc);
+            Log.w(TAG, "doWork: DetectorService not running — foreground re-auth required");
+            KeepaliveJobService.postPermissionLostNotificationStatic(ctx);
         } else {
             Log.d(TAG, "doWork: DetectorService alive — ok");
         }

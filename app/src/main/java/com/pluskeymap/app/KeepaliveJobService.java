@@ -15,17 +15,14 @@ import android.os.Build;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
 
 /**
- * JobScheduler-based keepalive that survives SIGKILL.
+ * JobScheduler-based health check that survives SIGKILL.
  *
- * Fires every ~60 seconds. Three cases:
- *  1. Service alive          → do nothing.
- *  2. Service dead, has perm → restart it silently.
- *  3. Service dead, no perm  → OxygenOS revoked READ_LOGS after process kill.
- *                              Post a high-priority notification so user taps
- *                              to open app and re-accept the OEM dialog.
+ * Android denies a new full-device log request from the background, even while
+ * the static READ_LOGS grant remains present. Therefore a dead detector must
+ * never be restarted here; notify the user so MainActivity can recreate the
+ * temporary reader session while it is visibly in the foreground.
  */
 public class KeepaliveJobService extends JobService {
 
@@ -52,19 +49,15 @@ public class KeepaliveJobService extends JobService {
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
 
         if (!hasLogPerm) {
-            // OxygenOS revoked READ_LOGS when it killed the process.
-            // User must open app and accept the OEM system dialog again.
-            Log.w(TAG, "onStartJob: READ_LOGS revoked — notifying user");
+            Log.w(TAG, "onStartJob: static READ_LOGS grant missing — notifying user");
             postPermissionLostNotificationStatic(ctx);
             jobFinished(params, false);
             return false;
         }
 
         if (!DetectorService.isRunning()) {
-            Log.w(TAG, "onStartJob: DetectorService dead — restarting");
-            Intent svc = new Intent(ctx, DetectorService.class)
-                    .setAction(DetectorService.ACTION_START);
-            ContextCompat.startForegroundService(ctx, svc);
+            Log.w(TAG, "onStartJob: DetectorService dead — foreground re-auth required");
+            postPermissionLostNotificationStatic(ctx);
         } else {
             Log.d(TAG, "onStartJob: DetectorService alive — ok");
         }
@@ -87,9 +80,9 @@ public class KeepaliveJobService extends JobService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(
                     CHANNEL_ALERT,
-                    "Plus 键权限提醒",
+                    "Plus 键日志访问提醒",
                     NotificationManager.IMPORTANCE_HIGH);
-            ch.setDescription("需要重新授予系统日志权限时发出提醒");
+            ch.setDescription("系统日志读取会话结束、需要前台重新确认时发出提醒");
             ch.setSound(null, null);
             nm.createNotificationChannel(ch);
         }
@@ -103,9 +96,9 @@ public class KeepaliveJobService extends JobService {
 
         Notification notif = new NotificationCompat.Builder(ctx, CHANNEL_ALERT)
                 .setContentTitle("Plus 键监听已停止，点击重新启用")
-                .setContentText("系统日志权限已被撤销，点击后重新接受系统对话框。")
+                .setContentText("系统日志读取会话已结束，点击后在前台重新确认。")
                 .setStyle(new NotificationCompat.BigTextStyle()
-                        .bigText("应用重新启动时，OxygenOS 撤销了系统日志权限。"
+                        .bigText("Android 只允许前台应用确认完整设备日志访问。"
                                 + "点击打开应用并接受系统对话框，即可重新启用 Plus 键检测。"))
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

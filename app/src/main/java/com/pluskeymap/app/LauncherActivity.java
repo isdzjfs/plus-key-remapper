@@ -24,7 +24,17 @@ public class LauncherActivity extends AppCompatActivity {
                 .getBoolean(SetupActivity.KEY_SKIPPED, false);
 
         if (setupDone || skipped) {
-            startActivity(new Intent(this, MainActivity.class));
+            Intent main = new Intent(this, MainActivity.class);
+            boolean wasRunning = getSharedPreferences(
+                    SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
+                    .getBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false);
+            // Opening the launcher is an explicit foreground user action. If an
+            // expected detector session is gone, recreate it after MainActivity
+            // gains focus so Android can show the full-log consent dialog.
+            if (wasRunning && !DetectorService.isRunning()) {
+                main.putExtra("reauth_logperm", true);
+            }
+            startActivity(main);
         } else {
             startActivity(new Intent(this, SetupActivity.class));
         }

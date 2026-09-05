@@ -23,17 +23,12 @@ public class PlusKeyApp extends Application {
         DynamicColors.applyToActivitiesIfAvailable(this);
         SettingsActivity.applySavedTheme(this);
 
-        // FIX: Schedule WorkManager periodic keepalive.
-        // Fires every 15 minutes — OxygenOS respects WorkManager jobs better
-        // than AlarmManager for apps in background. If DetectorService was killed,
-        // KeepaliveWorker restarts it. Uses KEEP so only one job ever exists.
+        // Periodic health checks notify when the session is lost. They must not
+        // recreate logcat from the background because Android denies that request.
         scheduleKeepalive();
-        // JobScheduler keepalive: fires every 60s, persisted in OS, survives SIGKILL.
-        // WorkManager alone has 15-min minimum — too long after OxygenOS hard-kills.
+        // JobScheduler check: persisted in OS and survives SIGKILL.
         KeepaliveJobService.schedule(this);
-        // Heartbeat: 3-minute repeating alarm living in AlarmManagerService —
-        // survives SIGKILL even when onDestroy() never runs (process hard-killed).
-        // Only arm if the service was actively running — avoids spurious restarts.
+        // Heartbeat: 3-minute repeating alarm living in AlarmManagerService.
         boolean wasRunning = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
                 .getBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false);
         if (wasRunning) {

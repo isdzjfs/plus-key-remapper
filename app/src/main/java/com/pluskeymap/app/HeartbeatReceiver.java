@@ -8,20 +8,16 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
-import androidx.core.content.ContextCompat;
-
 /**
  * Periodic heartbeat alarm receiver that fires every 3 minutes.
  *
- * OxygenOS can kill a foreground service even with START_STICKY — the service
- * restarts via onDestroy() alarm, but if the process is SIGKILLed before
- * onDestroy() runs, that alarm never gets scheduled. This receiver is a
- * belt-and-suspenders safety net: it is scheduled via setRepeating() which
- * survives process death (the alarm entry lives in AlarmManagerService) and
- * checks every 3 minutes whether DetectorService is alive.
+ * OxygenOS can kill the foreground service or its logcat reader. This receiver
+ * is scheduled via setRepeating(), survives process death, and checks every
+ * three minutes whether the approved detector session is still alive.
  *
- * If the service is dead but READ_LOGS is still granted → restart silently.
- * If READ_LOGS was revoked → post the permission-lost notification.
+ * A dead service cannot safely restart its full-device log reader from the
+ * background, so every dead/session-lost case posts the foreground re-auth
+ * notification instead of attempting a silent restart.
  * If the service was never started by the user → do nothing.
  */
 public class HeartbeatReceiver extends BroadcastReceiver {
@@ -46,16 +42,14 @@ public class HeartbeatReceiver extends BroadcastReceiver {
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
 
         if (!hasLogPerm) {
-            Log.w(TAG, "onReceive: READ_LOGS revoked — notifying user");
+            Log.w(TAG, "onReceive: static READ_LOGS grant missing — notifying user");
             KeepaliveJobService.postPermissionLostNotificationStatic(context);
             return;
         }
 
         if (!DetectorService.isRunning()) {
-            Log.w(TAG, "onReceive: DetectorService dead — restarting");
-            Intent svc = new Intent(context, DetectorService.class)
-                    .setAction(DetectorService.ACTION_START);
-            ContextCompat.startForegroundService(context, svc);
+            Log.w(TAG, "onReceive: DetectorService dead — foreground re-auth required");
+            KeepaliveJobService.postPermissionLostNotificationStatic(context);
         } else {
             Log.d(TAG, "onReceive: DetectorService alive — ok");
         }

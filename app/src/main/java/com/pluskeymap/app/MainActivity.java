@@ -46,6 +46,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean serviceRunning = false;
     // Set when OEM logcat dialog is denied mid-session. Cleared when user retries.
     private boolean oemLogcatDenied = false;
+    // Notification launches can reach onCreate before this Activity is actually
+    // top-resumed. Defer logcat creation until the window has foreground focus.
+    private boolean pendingForegroundReauth = false;
 
     // Polls permission state while activity is visible - catches OEM "allow read
     // logs" system overlays that do NOT trigger onPause/onResume, and detects
@@ -84,6 +87,7 @@ public class MainActivity extends AppCompatActivity {
         public void onReceive(Context context, Intent intent) {
             if (DetectorService.ACTION_LOGCAT_FAILED.equals(intent.getAction())) {
                 serviceRunning = false;
+                oemLogcatDenied = true;
                 applySkippedState(false);
                 refreshServiceStatus(true);
                 return;
@@ -146,8 +150,8 @@ public class MainActivity extends AppCompatActivity {
 
         if (savedInstanceState == null) runEntranceAnimation();
 
-        // Launched from the "permission revoked" notification - auto-start service
-        // so OxygenOS shows its READ_LOGS consent dialog immediately.
+        // A notification retry is queued until this Activity has window focus;
+        // Android rejects full-device log requests made while still backgrounded.
         if (getIntent() != null && getIntent().getBooleanExtra("reauth_logperm", false)) {
             handleReauthIntent();
         }
@@ -163,22 +167,36 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Called when the user taps the "permission revoked" notification.
-     * Starts DetectorService so OxygenOS shows the READ_LOGS consent dialog.
-     * isPermissionGranted() will return false here - we skip that guard
-     * intentionally because starting the service is what triggers the dialog.
+     * Called when the user taps the log-session notification. The actual start
+     * waits for window focus so LogcatManager sees this package as foreground.
      */
     private void handleReauthIntent() {
+        pendingForegroundReauth = true;
+        if (getIntent() != null) getIntent().removeExtra("reauth_logperm");
+        if (hasWindowFocus()) performPendingForegroundReauth();
+    }
+
+    private void performPendingForegroundReauth() {
+        if (!pendingForegroundReauth) return;
         boolean wasRunning = getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
                 .getBoolean(SettingsActivity.KEY_SERVICE_WAS_RUNNING, false);
+        pendingForegroundReauth = false;
         if (!wasRunning) return; // user had stopped it - don't auto-restart
-        // Dismiss the notification now that user has responded
+        if (!isPermissionGranted()) {
+            startActivity(new Intent(this, SetupActivity.class));
+            return;
+        }
         KeepaliveJobService.dismissPermNotification(this);
-        // Start service - this triggers the OEM READ_LOGS consent dialog on OxygenOS
         oemLogcatDenied = false;
         serviceRunning = true;
         launchDetectorService();
         refreshServiceStatus(true);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) performPendingForegroundReauth();
     }
 
     @Override
@@ -581,12 +599,17 @@ public class MainActivity extends AppCompatActivity {
             ivStatusIcon.setImageResource(R.drawable.ic_status_active);
             targetColor = resolveColor(com.google.android.material.R.attr.colorPrimaryContainer);
         } else if (serviceRunning) {
-            // Service is up but hasn't seen an OEM key tag yet - could be starting,
-            // waiting for the system dialog, or waiting for the user to press the key.
-            tvStatusTitle.setText("请按一次 Plus 键");
-            tvStatusSub.setText("按一次即可完成设置。");
+            // The reader can always see this app's own lines. It becomes active
+            // only after a line from another process proves full-device access.
+            tvStatusTitle.setText("正在确认系统日志访问");
+            tvStatusSub.setText("请在系统弹窗中选择允许；无需先按 Plus 键。");
             ivStatusIcon.setImageResource(R.drawable.ic_status_warning);
             targetColor = resolveColor(com.google.android.material.R.attr.colorSecondaryContainer);
+        } else if (oemLogcatDenied || DetectorService.isLogcatDenied(this)) {
+            tvStatusTitle.setText("系统日志访问已停止");
+            tvStatusSub.setText("点击后在前台重新确认并恢复 Plus 键监听。");
+            ivStatusIcon.setImageResource(R.drawable.ic_status_warning);
+            targetColor = resolveColor(com.google.android.material.R.attr.colorErrorContainer);
         } else if (!keySet) {
             tvStatusTitle.setText("准备就绪，点击启动");
             tvStatusSub.setText("请先检测 Plus 键，然后点击启用。");
@@ -646,7 +669,9 @@ public class MainActivity extends AppCompatActivity {
             tvDetectedKeycode.setText("现在请按下 Plus 键…");
             tvDetectedAction.setText("正在通过系统日志监听");
             DetectorService.setDetectMode(true);
-            launchDetectorService();
+            // Do not replace an already-approved reader session just to enter
+            // detect mode; a replacement would require another system approval.
+            if (!DetectorService.isRunning()) launchDetectorService();
         } else {
             btnDetect.setText("开始检测");
             DetectorService.setDetectMode(false);
@@ -663,7 +688,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         // Clear any previously persisted denial so the service gets a fresh attempt.
-        // The new session will either confirm (logcat output received) or deny again.
+        // The new foreground session will confirm after any external-process
+        // log line arrives, without requiring a physical Plus-key press.
         getSharedPreferences(DetectorService.PREFS_LOGCAT, MODE_PRIVATE)
                 .edit()
                 .putBoolean(DetectorService.KEY_LOGCAT_DENIED, false)
@@ -680,7 +706,8 @@ public class MainActivity extends AppCompatActivity {
     private void launchDetectorService() {
         Intent i = new Intent(this, DetectorService.class)
                 .setAction(DetectorService.ACTION_START)
-                .putExtra(DetectorService.EXTRA_DETECT_MODE, detectMode);
+                .putExtra(DetectorService.EXTRA_DETECT_MODE, detectMode)
+                .putExtra(DetectorService.EXTRA_FOREGROUND_AUTH_ATTEMPT, true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(i);
         } else {
