@@ -4,6 +4,7 @@ import android.os.IBinder;
 import android.os.RemoteException;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -12,13 +13,14 @@ import java.util.concurrent.TimeUnit;
 /** Shizuku UserService. No arbitrary commands/paths are accepted over Binder. */
 public class KeyReaderService extends IKeyReader.Stub {
     private volatile Session session;
+    private boolean wakeScreenOnDown;
 
     public KeyReaderService() {}
 
     @Override public synchronized void start(IKeyEventListener listener) throws RemoteException {
         stop();
         if (listener == null) return;
-        Session next = new Session(listener);
+        Session next = new Session(listener, wakeScreenOnDown);
         session = next;
         listener.asBinder().linkToDeath(next, 0);
         new Thread(next, "pkm-input-reader").start();
@@ -37,11 +39,21 @@ public class KeyReaderService extends IKeyReader.Stub {
 
     @Override public void destroy() { stop(); System.exit(0); }
 
+    @Override public synchronized void setWakeScreenOnDown(boolean enabled) {
+        wakeScreenOnDown = enabled;
+        if (session != null) session.wakeScreenOnDown = enabled;
+    }
+
     private static final class Session implements Runnable, IBinder.DeathRecipient {
         final IKeyEventListener listener;
+        volatile boolean wakeScreenOnDown;
         volatile Process process;
+        private Process wakeProcess;
         volatile boolean closed, ready;
-        Session(IKeyEventListener listener) { this.listener = listener; }
+        Session(IKeyEventListener listener, boolean wakeScreenOnDown) {
+            this.listener = listener;
+            this.wakeScreenOnDown = wakeScreenOnDown;
+        }
 
         synchronized Process launch(String... args) throws Exception {
             if (closed) throw new InterruptedException();
@@ -86,7 +98,10 @@ public class KeyReaderService extends IKeyReader.Stub {
                     String line;
                     while (!closed && (line = reader.readLine()) != null) {
                         InputEventParser.Event event = InputEventParser.parse(line);
-                        if (event != null) listener.onKey(event.down, event.timeMs);
+                        if (event != null) {
+                            listener.onKey(event.down, event.timeMs);
+                            if (event.down) wakeScreen();
+                        }
                         else if (line.contains("SYN_DROPPED"))
                             throw new IllegalStateException("输入事件丢失，重新连接以重置按键状态");
                     }
@@ -104,6 +119,36 @@ public class KeyReaderService extends IKeyReader.Stub {
             return new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
         }
 
+        private synchronized void wakeScreen() {
+            if (closed || !wakeScreenOnDown
+                    || (wakeProcess != null && wakeProcess.isAlive())) return;
+            try {
+                // Hans defers app callbacks while screen-off; generic "am unfreeze"
+                // does not thaw its private freezer. Wake the display from shell for
+                // UI mappings so the system handles its normal LcdOn thaw path.
+                // WAKEUP never toggles an already-lit display or unlocks keyguard.
+                Process wake = new ProcessBuilder("/system/bin/input", "keyevent", "KEYCODE_WAKEUP")
+                        .redirectErrorStream(true).redirectOutput(new File("/dev/null")).start();
+                wakeProcess = wake;
+                new Thread(() -> {
+                    try {
+                        if (!wake.waitFor(2, TimeUnit.SECONDS)) {
+                            wake.destroyForcibly();
+                            android.util.Log.w("PKM_Shizuku", "Input screen wake timed out");
+                        } else {
+                            android.util.Log.d("PKM_Shizuku", "Input screen wake result=" + wake.exitValue());
+                        }
+                    }
+                    catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        wake.destroyForcibly();
+                    }
+                }, "pkm-input-wake").start();
+            } catch (Exception e) {
+                android.util.Log.w("PKM_Shizuku", "Input screen wake failed", e);
+            }
+        }
+
         @Override public void binderDied() { close(); }
 
         synchronized void close() {
@@ -111,6 +156,7 @@ public class KeyReaderService extends IKeyReader.Stub {
             closed = true;
             ready = false;
             if (process != null) process.destroyForcibly();
+            if (wakeProcess != null && wakeProcess.isAlive()) wakeProcess.destroyForcibly();
             try { listener.asBinder().unlinkToDeath(this, 0); }
             catch (java.util.NoSuchElementException ignored) { }
         }

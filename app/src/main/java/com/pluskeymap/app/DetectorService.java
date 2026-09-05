@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -55,6 +56,7 @@ public class DetectorService extends Service {
     private SharedPreferences prefs;
     private ShizukuKeyWatcher shizukuWatcher;
     private RawKeyGesture rawGesture;
+    private InputKeepaliveWindow inputKeepaliveWindow;
     private boolean shizukuMode;
     private static volatile boolean inputReady;
     private static volatile String inputStatus = "已暂停";
@@ -299,8 +301,14 @@ public class DetectorService extends Service {
         }
         prefs = ActionExecutor.prefs(this);
         rawGesture = new RawKeyGesture(new RawKeyGesture.Scheduler() {
-            @Override public void postDelayed(Runnable r, long delay) { handler.postDelayed(r, delay); }
-            @Override public void cancel(Runnable r) { handler.removeCallbacks(r); }
+            @Override public void postDelayed(Runnable r, long delay) {
+                long deadline = SystemClock.uptimeMillis() + delay;
+                handler.postAtTime(() -> {
+                    if (SystemClock.uptimeMillis() - deadline > 2000) rawGesture.reset();
+                    else r.run();
+                }, r, deadline);
+            }
+            @Override public void cancel(Runnable r) { handler.removeCallbacksAndMessages(r); }
         }, new RawKeyGesture.Actions() {
             @Override public void single() {
                 dispatchAction(ActionExecutor.KEY_ACTION_SINGLE, ActionExecutor.KEY_LAUNCH_PKG_SINGLE,
@@ -330,9 +338,14 @@ public class DetectorService extends Service {
                     inputReady = ready;
                     inputStatus = message;
                     if (!ready) {
+                        if (inputKeepaliveWindow != null) inputKeepaliveWindow.hide();
                         rawGesture.reset();
                         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
                     } else {
+                        if (inputKeepaliveWindow == null)
+                            inputKeepaliveWindow = new InputKeepaliveWindow(DetectorService.this);
+                        if (!inputKeepaliveWindow.show())
+                            inputStatus = "正在监听；悬浮窗保活不可用，后台可能延迟";
                         acquireWakeLock();
                         KeepaliveJobService.dismissPermNotification(DetectorService.this);
                     }
@@ -341,6 +354,14 @@ public class DetectorService extends Service {
                 }
                 @Override public void key(boolean down, long eventTimeMs) {
                     if (isStopping) return;
+                    // getevent uses CLOCK_MONOTONIC, matching uptimeMillis. Do not
+                    // replay old physical presses after a prolonged OEM freeze.
+                    long ageMs = SystemClock.uptimeMillis() - eventTimeMs;
+                    if (ageMs > 2000) {
+                        rawGesture.reset();
+                        Log.w(TAG, "Discarded stale Plus key time=" + eventTimeMs + " ageMs=" + ageMs);
+                        return;
+                    }
                     Log.d(TAG, "Raw Plus key " + (down ? "DOWN" : "UP") + " time=" + eventTimeMs);
                     if (detectMode) {
                         rawGesture.reset();
@@ -353,6 +374,7 @@ public class DetectorService extends Service {
                     rawGesture.onKey(down, eventTimeMs, isEffectiveSingleOnlyMode());
                 }
             });
+            shizukuWatcher.setWakeScreenOnDown(shouldWakeScreenForInput());
             shizukuWatcher.start();
         } else startLogcat();
         // Ensure OS-persisted job is alive (re-registers after SIGKILL wipe)
@@ -800,6 +822,7 @@ public class DetectorService extends Service {
     }
 
     private void stopEverything() {
+        if (inputKeepaliveWindow != null) inputKeepaliveWindow.hide();
         inputReady = false;
         logcatConfirmed = false;
         logcatVerifying = false;
@@ -931,12 +954,27 @@ public class DetectorService extends Service {
                 == ActionConfig.ACTION_NONE;
     }
 
+    /** Wake at DOWN only when an effective mapping needs an interactive display. */
+    private boolean shouldWakeScreenForInput() {
+        if (detectMode) return false;
+        boolean singleLaunch = prefs.getInt(ActionExecutor.KEY_ACTION_SINGLE, ActionConfig.ACTION_NONE)
+                == ActionConfig.ACTION_CUSTOM_INTENT
+                && !prefs.getString(ActionExecutor.KEY_CUSTOM_INTENT_SINGLE, "").trim().isEmpty();
+        boolean longLaunch = !isEffectiveSingleOnlyMode()
+                && prefs.getInt(ActionExecutor.KEY_ACTION_LONG, ActionConfig.ACTION_NONE)
+                == ActionConfig.ACTION_CUSTOM_INTENT
+                && !prefs.getString(ActionExecutor.KEY_CUSTOM_INTENT_LONG, "").trim().isEmpty();
+        return singleLaunch || longLaunch;
+    }
+
     /** Applies a settings/action change to the already-running watcher. */
     static void refreshGestureMode() {
         DetectorService service = instance;
         if (service == null || service.handler == null) return;
         service.handler.post(() -> {
             if (service.rawGesture != null) service.rawGesture.reset();
+            if (service.shizukuWatcher != null)
+                service.shizukuWatcher.setWakeScreenOnDown(service.shouldWakeScreenForInput());
             if (service.logcatWatcher != null) {
                 service.logcatWatcher.setDualMode(!service.isEffectiveSingleOnlyMode());
             }
@@ -999,6 +1037,8 @@ public class DetectorService extends Service {
     static void setDetectMode(boolean active) {
         detectMode = active;
         if (instance != null && instance.rawGesture != null) instance.rawGesture.reset();
+        if (instance != null && instance.shizukuWatcher != null)
+            instance.shizukuWatcher.setWakeScreenOnDown(instance.shouldWakeScreenForInput());
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }

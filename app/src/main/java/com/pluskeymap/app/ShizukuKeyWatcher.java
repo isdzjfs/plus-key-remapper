@@ -6,6 +6,7 @@ import android.content.ServiceConnection;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import rikka.shizuku.Shizuku;
 
@@ -21,6 +22,7 @@ final class ShizukuKeyWatcher {
     private ServiceConnection connection;
     private IKeyReader reader;
     private boolean closed, ready;
+    private boolean wakeScreenOnDown;
     private int generation, streamGeneration, failures;
     private final Runnable retry = this::connect;
     private final Runnable health = this::checkHealth;
@@ -88,6 +90,7 @@ final class ShizukuKeyWatcher {
         handler.removeCallbacks(bindTimeout);
         handler.postDelayed(bindTimeout, 10000);
         try {
+            reader.setWakeScreenOnDown(wakeScreenOnDown);
             reader.start(new IKeyEventListener.Stub() {
                 private boolean current() { return !closed && token == generation && stream == streamGeneration; }
                 @Override public void onReady(String device) {
@@ -102,7 +105,15 @@ final class ShizukuKeyWatcher {
                     });
                 }
                 @Override public void onKey(boolean down, long eventTimeMs) {
-                    handler.post(() -> { if (current() && ready) listener.key(down, eventTimeMs); });
+                    final long receivedAt = SystemClock.uptimeMillis();
+                    Log.d("PKM_Shizuku", "Input callback " + (down ? "DOWN" : "UP")
+                            + " time=" + eventTimeMs + " inputAgeMs=" + (receivedAt - eventTimeMs));
+                    handler.post(() -> {
+                        if (!current() || !ready) return;
+                        Log.d("PKM_Shizuku", "Input dispatch time=" + eventTimeMs
+                                + " mainQueueMs=" + (SystemClock.uptimeMillis() - receivedAt));
+                        listener.key(down, eventTimeMs);
+                    });
                 }
                 @Override public void onError(String message) {
                     handler.post(() -> { if (current()) failed(message); });
@@ -120,6 +131,14 @@ final class ShizukuKeyWatcher {
             }
         } catch (Exception e) { failed("按键服务无响应，正在重新连接"); return; }
         handler.postDelayed(health, 5000);
+    }
+
+    void setWakeScreenOnDown(boolean enabled) {
+        wakeScreenOnDown = enabled;
+        if (reader != null) {
+            try { reader.setWakeScreenOnDown(enabled); }
+            catch (Exception e) { failed("无法更新按键亮屏设置，正在重连"); }
+        }
     }
 
     private void failed(String message) {
