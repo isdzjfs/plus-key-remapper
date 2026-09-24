@@ -15,6 +15,11 @@ public class ActionConfig {
     public static final int ACTION_CUSTOM_INTENT  = 11;
     public static final int ACTION_CAMERA_SHUTTER = 12;
 
+    public static final String QUICKDOOR_MAIN_INTENT =
+            "|com.sen.quickdoor|com.sen.quickdoor.MainActivity|";
+    public static final String QUICKDOOR_AUTO_INTENT =
+            "|com.sen.quickdoor|com.sen.quickdoor.AutoOpenActivity|";
+
     public static final String[] ACTION_LABELS = {
             "无",
             "开关手电筒",

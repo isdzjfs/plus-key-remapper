@@ -883,6 +883,8 @@ public class MainActivity extends AppCompatActivity {
                     ? ActionExecutor.KEY_CUSTOM_INTENT_SINGLE
                     : ActionExecutor.KEY_CUSTOM_INTENT_LONG;
             String stored = prefs.getString(intentKey, "");
+            if (ActionConfig.QUICKDOOR_MAIN_INTENT.equals(stored)) return "QuickDoor（仅打开）";
+            if (ActionConfig.QUICKDOOR_AUTO_INTENT.equals(stored)) return "QuickDoor（开门并退出）";
             if (!stored.isEmpty()) {
                 String[] parts = stored.split("\\|", -1);
                 String pkg = parts.length > 1 ? parts[1].trim() : "";
@@ -922,6 +924,12 @@ public class MainActivity extends AppCompatActivity {
                 actionIndices.add(i);
             }
         }
+        // A single selection configures both gestures and enables long-press mode.
+        final int quickDoorPair = -1;
+        if (ActionExecutor.KEY_ACTION_SINGLE.equals(actionKey)) {
+            displayLabels.add("QuickDoor：单击打开，长按开门并退出");
+            actionIndices.add(quickDoorPair);
+        }
         // Add "Open App / Custom Intent…" as the last entry, opening the full picker
         displayLabels.add("打开应用/自定义 Intent…");
         actionIndices.add(ActionConfig.ACTION_CUSTOM_INTENT);
@@ -932,6 +940,22 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("选择操作")
                 .setItems(items, (dialog, which) -> {
                     int realAction = actionIndices.get(which);
+                    if (realAction == quickDoorPair) {
+                        prefs.edit()
+                                .putInt(ActionExecutor.KEY_ACTION_SINGLE, ActionConfig.ACTION_CUSTOM_INTENT)
+                                .putString(ActionExecutor.KEY_CUSTOM_INTENT_SINGLE,
+                                        ActionConfig.QUICKDOOR_MAIN_INTENT)
+                                .putInt(ActionExecutor.KEY_ACTION_LONG, ActionConfig.ACTION_CUSTOM_INTENT)
+                                .putString(ActionExecutor.KEY_CUSTOM_INTENT_LONG,
+                                        ActionConfig.QUICKDOOR_AUTO_INTENT)
+                                .apply();
+                        getSharedPreferences(SettingsActivity.PREFS_SETTINGS, MODE_PRIVATE)
+                                .edit().putBoolean(SettingsActivity.KEY_SINGLE_ONLY_MODE, false).apply();
+                        DetectorService.refreshGestureMode();
+                        applySingleOnlyMode();
+                        refreshBindingLabels();
+                        return;
+                    }
                     if (realAction == ActionConfig.ACTION_CUSTOM_INTENT) {
                         // Open the new tabbed bottom-sheet picker
                         openAppIntentPicker(actionKey, intentKey, label);

@@ -10,6 +10,18 @@ Remap the physical Plus (alert slider / side) key on the OnePlus 15 to any actio
 - Keepalive worker to survive OxygenOS background kills
 - Shizuku input reader with automatic reconnect and a logcat compatibility mode
 
+## QuickDoor 单击 / 长按
+
+先安装同一签名证书签发的本项目与 QuickDoor Android APK。在本应用主页点击“单击操作”，选择
+“QuickDoor：单击打开，长按开门并退出”。该选项会同时设置两个动作并启用长按识别：
+
+- 单击：打开 QuickDoor 主界面，不发起开门请求。
+- 按住约 850 毫秒：打开 QuickDoor 的受签名权限保护的入口，自动开启正门（B 门）；成功后从最近任务中移除 QuickDoor。
+
+自动开门需要 QuickDoor 已在本机配置凭据。网络或开门失败时 QuickDoor 保留在屏幕上显示错误，
+不会重试开门请求。若两个 APK 签名不同，Android 会拒绝长按入口；可在系统包信息中检查
+`com.sen.quickdoor.permission.AUTO_OPEN` 是否授予 `com.pluskeymap.app`。
+
 ## Requirements
 - OnePlus 15 running OxygenOS (Android 15+)
 - Accessibility Service permission
