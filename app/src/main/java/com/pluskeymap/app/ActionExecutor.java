@@ -615,9 +615,14 @@ public class ActionExecutor {
             String notifLabel = !component.isEmpty() ? component
                     : (!pkg.isEmpty() ? pkg : action);
 
+            // QuickDoor's protected auto-open activity starts its one-shot request in
+            // onCreate, even if the secure keyguard keeps its UI behind the lock screen.
+            // Normal app launches still wait for unlock before showing their UI.
+            boolean waitForUnlock = ActionConfig.shouldWaitForUnlock(stored);
+
             // Try startActivity via overlay trick first; broadcast as last resort
             try {
-                startActivityFromBackground(intent, notifLabel);
+                startActivityFromBackground(intent, notifLabel, waitForUnlock);
             } catch (Exception e) {
                 Log.w(TAG, "fireCustomIntent: all launch methods failed, trying broadcast: " + e.getMessage());
                 context.sendBroadcast(intent);

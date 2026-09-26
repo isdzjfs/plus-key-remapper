@@ -18,6 +18,9 @@ Remap the physical Plus (alert slider / side) key on the OnePlus 15 to any actio
 - 单击：打开 QuickDoor 主界面，不发起开门请求。
 - 按住约 850 毫秒：打开 QuickDoor 的受签名权限保护的入口，自动开启正门（B 门）；成功后从最近任务中移除 QuickDoor。
 
+锁屏时长按不再等待解锁，而是直接启动自动开门入口；QuickDoor 界面仍留在锁屏后方。
+普通单击在锁屏时继续等到解锁后才显示界面。
+
 自动开门需要 QuickDoor 已在本机配置凭据。网络或开门失败时 QuickDoor 保留在屏幕上显示错误，
 不会重试开门请求。若两个 APK 签名不同，Android 会拒绝长按入口；可在系统包信息中检查
 `com.sen.quickdoor.permission.AUTO_OPEN` 是否授予 `com.pluskeymap.app`。

@@ -99,8 +99,10 @@ public class KeyReaderService extends IKeyReader.Stub {
                     while (!closed && (line = reader.readLine()) != null) {
                         InputEventParser.Event event = InputEventParser.parse(line);
                         if (event != null) {
-                            listener.onKey(event.down, event.timeMs);
+                            // Wake before crossing Binder: OxygenOS may freeze the app
+                            // process while locked, delaying delivery of the callback.
                             if (event.down) wakeScreen();
+                            listener.onKey(event.down, event.timeMs);
                         }
                         else if (line.contains("SYN_DROPPED"))
                             throw new IllegalStateException("输入事件丢失，重新连接以重置按键状态");

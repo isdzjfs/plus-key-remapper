@@ -20,6 +20,11 @@ public class ActionConfig {
     public static final String QUICKDOOR_AUTO_INTENT =
             "|com.sen.quickdoor|com.sen.quickdoor.AutoOpenActivity|";
 
+    static boolean shouldWaitForUnlock(String storedIntent) {
+        return storedIntent == null
+                || !QUICKDOOR_AUTO_INTENT.equals(storedIntent.trim());
+    }
+
     public static final String[] ACTION_LABELS = {
             "无",
             "开关手电筒",
