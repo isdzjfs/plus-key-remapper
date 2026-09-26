@@ -20,6 +20,7 @@ Remap the physical Plus (alert slider / side) key on the OnePlus 15 to any actio
 
 锁屏时长按不再等待解锁，而是直接启动自动开门入口；QuickDoor 界面仍留在锁屏后方。
 普通单击在锁屏时继续等到解锁后才显示界面。
+如果锁屏时先单击再长按，长按会取消尚未执行的单击打开首页动作。
 
 自动开门需要 QuickDoor 已在本机配置凭据。网络或开门失败时 QuickDoor 保留在屏幕上显示错误，
 不会重试开门请求。若两个 APK 签名不同，Android 会拒绝长按入口；可在系统包信息中检查

@@ -203,6 +203,7 @@ public class ActionExecutor {
         Intent launchIntent = new Intent(intent)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         Runnable launch = () -> {
+            discardPendingQuickDoorMainLaunchForAuto(launchIntent);
             if (rememberForUnlock
                     && rememberLaunchForUnlockIfNeeded(launchIntent, label)) {
                 wakeScreenForPendingUnlock(label);
@@ -226,6 +227,28 @@ public class ActionExecutor {
         pendingUnlockExpiryElapsedMs = SystemClock.elapsedRealtime() + UNLOCK_REPLAY_TIMEOUT_MS;
         Log.d(TAG, "Queued locked-screen launch replay for '" + label + "'");
         return true;
+    }
+
+    private void discardPendingQuickDoorMainLaunchForAuto(Intent intent) {
+        if (!isQuickDoorComponent(intent, "com.sen.quickdoor.AutoOpenActivity")
+                || !isQuickDoorComponent(pendingUnlockIntent, "com.sen.quickdoor.MainActivity")) {
+            return;
+        }
+        if (unlockStatePollRunnable != null) {
+            mainHandler.removeCallbacks(unlockStatePollRunnable);
+            unlockStatePollRunnable = null;
+        }
+        pendingUnlockIntent = null;
+        pendingUnlockLabel = null;
+        pendingUnlockExpiryElapsedMs = 0L;
+        Log.d(TAG, "Discarded pending QuickDoor main launch after auto-open long press");
+    }
+
+    private static boolean isQuickDoorComponent(Intent intent, String className) {
+        android.content.ComponentName component = intent == null ? null : intent.getComponent();
+        return component != null
+                && "com.sen.quickdoor".equals(component.getPackageName())
+                && className.equals(component.getClassName());
     }
 
     /** Replays the most recent locked-screen launch as soon as the user unlocks. */
